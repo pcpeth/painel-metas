@@ -117,7 +117,42 @@ td.r{text-align:right}
 #login h2{font-size:24px;font-weight:800;margin-bottom:8px}
 #login p{color:var(--mut);margin-bottom:22px;line-height:1.5}
 .gbtn{background:#fff;color:#222;padding:12px 18px;font-weight:600;display:inline-flex;align-items:center;gap:10px}
-@media(max-width:1000px){.kpis{grid-template-columns:repeat(2,1fr)}.row{grid-template-columns:1fr}}
+.tabs{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:3px}
+.tabs button{background:transparent;color:var(--mut);padding:7px 12px;font-weight:600;font-size:13px}
+.tabs button.on{background:var(--panel2);color:var(--txt)}
+.row2{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-bottom:16px}
+.row2>*{min-width:0}
+.act{display:flex;align-items:center;gap:10px;background:var(--panel2);padding:9px 12px;border-radius:10px}
+.act .d{font-size:11px;color:var(--mut);min-width:62px;font-weight:600}
+.act .t{flex:1;min-width:0}
+.act .t small{display:block;color:var(--mut);font-size:11px}
+.act.done .t{text-decoration:line-through;color:var(--mut)}
+.act .chk{width:24px;height:24px;font-size:12px;flex:none}
+.gcal{font-size:11px;color:var(--acc);text-decoration:none;white-space:nowrap}
+.bal-total{font-size:28px;font-weight:800;color:var(--ok)}
+.bal-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.bal-row:last-child{border:0}
+.calwrap{display:grid;grid-template-columns:1.8fr 1fr;gap:14px}
+.calwrap>*{min-width:0}
+.calhead{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.calhead h3{flex:1;text-align:center;margin:0;font-size:16px;color:var(--txt);text-transform:none;letter-spacing:0}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.calgrid .wd{text-align:center;font-size:11px;color:var(--mut);font-weight:600;padding:4px 0}
+.cday{min-height:88px;background:var(--panel2);border-radius:8px;padding:5px;cursor:pointer;border:1px solid transparent;overflow:hidden}
+.cday:hover{border-color:var(--acc)}
+.cday.out{opacity:.35}
+.cday.tod{border-color:var(--acc)}
+.cday.hol{background:#2a2410}
+.cday.we{background:#141b2b}
+.cday .n{font-size:12px;font-weight:700}
+.cday .ev{font-size:10px;border-radius:4px;padding:1px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
+.legend{display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--mut);flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.hol-item{background:var(--panel2);border-radius:10px;padding:10px 12px}
+.hol-item b{display:block}
+.hol-item .meta{font-size:12px;color:var(--mut);margin:2px 0 8px}
+.badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;background:#3b2e10;color:var(--warn);margin-left:6px}
+@media(max-width:1000px){.kpis{grid-template-columns:repeat(2,1fr)}.row,.row2,.calwrap{grid-template-columns:1fr}.cday{min-height:60px}}
 @media(max-width:520px){.f2,.f3,.types{grid-template-columns:1fr}.kpi .v{font-size:24px}}
 </style>
 </head>
@@ -134,12 +169,15 @@ td.r{text-align:right}
   <header>
     <h1>🎯 Painel de <span>Metas</span></h1>
     <div class="sp"></div>
+    <nav class="tabs"><button class="on" data-tab="painel">📊 Painel</button><button data-tab="cal">📅 Calendário</button></nav>
     <button class="btn ghost sm" id="btnExport" title="Baixar backup JSON">⬇ Backup</button>
+    <label class="btn ghost sm" title="Importar metas de um arquivo JSON" style="cursor:pointer">⬆ Importar<input type="file" id="fileImport" accept=".json,application/json" hidden></label>
     <button class="btn" id="btnNew">+ Nova meta</button>
     <div class="user" id="userBox"></div>
   </header>
   <div id="banner"></div>
 
+  <div id="viewPainel">
   <section class="kpis" id="kpis"></section>
 
   <section class="row">
@@ -148,8 +186,25 @@ td.r{text-align:right}
     <div class="card"><h3>Hábitos de hoje</h3><div class="today-list" id="today"></div></div>
   </section>
 
+  <section class="row2">
+    <div class="card"><h3>Próximos 7 dias</h3><div id="next7" class="today-list"></div></div>
+    <div class="card"><h3>🏦 Saldo nos bancos</h3><div id="balance"></div></div>
+  </section>
+
   <div class="filters" id="filters"></div>
   <section class="grid" id="grid"></section>
+  </div>
+
+  <div id="viewCal" hidden>
+    <section class="calwrap">
+      <div class="card">
+        <div class="calhead"><button class="btn ghost sm" id="calPrev">‹</button><h3 id="calTitle"></h3><button class="btn ghost sm" id="calNext">›</button><button class="btn ghost sm" id="calToday">Hoje</button></div>
+        <div class="calgrid" id="calGrid"></div>
+        <div class="legend"><span><i style="background:var(--warn)"></i>Feriado</span><span><i style="background:#8b97b0"></i>Ponto facultativo</span><span><i style="background:var(--acc)"></i>Ação</span><span><i style="background:var(--bad)"></i>Prazo de meta</span></div>
+      </div>
+      <div class="card"><h3>🏖️ Próximos feriados e emendas</h3><div id="holidays" class="today-list" style="max-height:none"></div></div>
+    </section>
+  </div>
 </div>
 
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
@@ -263,15 +318,16 @@ function calc(g){
 const LOCAL = !firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith("COLE");
 let store, fb = {};
 
+/* Coleções: goals (metas), actions (ações agendadas), finance (saldo gravado pelo robô) */
 function localStore(){
-  const K = "painel-metas-v1";
-  let subs = [];
-  const read = () => { try { return JSON.parse(localStorage.getItem(K)) || []; } catch { return []; } };
-  const write = a => { try { localStorage.setItem(K, JSON.stringify(a)); } catch {} subs.forEach(f=>f(a)); };
+  const K = n => n === "goals" ? "painel-metas-v1" : "painel-metas-" + n;
+  const subs = {};
+  const read = n => { try { return JSON.parse(localStorage.getItem(K(n))) || []; } catch { return []; } };
+  const write = (n,a) => { try { localStorage.setItem(K(n), JSON.stringify(a)); } catch {} (subs[n]||[]).forEach(f=>f(a)); };
   return {
-    subscribe(cb){ subs.push(cb); cb(read()); },
-    async save(g){ const a = read(); const i = a.findIndex(x=>x.id===g.id); i>=0 ? a[i]=g : a.push(g); write(a); },
-    async remove(id){ write(read().filter(x=>x.id!==id)); }
+    subscribe(n, cb){ (subs[n] ||= []).push(cb); cb(read(n)); },
+    async save(n, g){ const a = read(n); const i = a.findIndex(x=>x.id===g.id); i>=0 ? a[i]=g : a.push(g); write(n,a); },
+    async remove(n, id){ write(n, read(n).filter(x=>x.id!==id)); }
   };
 }
 
@@ -289,11 +345,11 @@ async function firebaseStore(){
       if (!user){ document.getElementById("login").classList.add("show"); renderUser(null); return; }
       document.getElementById("login").classList.remove("show");
       renderUser(user);
-      const col = F.collection(db, "users", user.uid, "goals");
+      const col = n => F.collection(db, "users", user.uid, n);
       resolve({
-        subscribe(cb){ F.onSnapshot(col, snap => cb(snap.docs.map(d=>d.data())), e => toast("Erro ao ler: " + e.code)); },
-        async save(g){ await F.setDoc(F.doc(col, g.id), JSON.parse(JSON.stringify(g))); },
-        async remove(id){ await F.deleteDoc(F.doc(col, id)); }
+        subscribe(n, cb){ F.onSnapshot(col(n), snap => cb(snap.docs.map(d=>({id:d.id, ...d.data()}))), e => toast("Erro ao ler: " + e.code)); },
+        async save(n, g){ await F.setDoc(F.doc(col(n), g.id), JSON.parse(JSON.stringify(g))); },
+        async remove(n, id){ await F.deleteDoc(F.doc(col(n), id)); }
       });
     });
   });
@@ -312,13 +368,176 @@ document.getElementById("btnLogin").onclick = async () => {
 };
 
 /* ============ ESTADO E RENDER ============ */
-let goals = [];
+let goals = [], actions = [], finance = null;
+const $ = id => document.getElementById(id);
+let tab = "painel", calMonth = today().slice(0,7);
+
+/* ============ FERIADOS (nacionais + SP), calculados localmente ============ */
+function easter(y){ const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1; return iso(new Date(y,mo-1,da)); }
+const _holCache = {};
+function holidaysOf(y){
+  if (_holCache[y]) return _holCache[y];
+  const E = easter(y), F = "feriado", P = "facultativo";
+  const L = [[`${y}-01-01`,"Confraternização Universal",F],[addDays(E,-48),"Carnaval",P],[addDays(E,-47),"Carnaval",P],[addDays(E,-46),"Quarta de Cinzas (até 14h)",P],
+    [addDays(E,-2),"Paixão de Cristo",F],[`${y}-04-21`,"Tiradentes",F],[`${y}-05-01`,"Dia do Trabalho",F],[addDays(E,60),"Corpus Christi",P],
+    [`${y}-07-09`,"Revolução Constitucionalista (SP)",F],[`${y}-09-07`,"Independência do Brasil",F],[`${y}-10-12`,"Nossa Senhora Aparecida",F],
+    [`${y}-11-02`,"Finados",F],[`${y}-11-15`,"Proclamação da República",F],[`${y}-11-20`,"Consciência Negra",F],
+    [`${y}-12-24`,"Véspera de Natal (após 14h)",P],[`${y}-12-25`,"Natal",F],[`${y}-12-31`,"Véspera de Ano Novo (após 14h)",P]];
+  return _holCache[y] = L.map(([date,name,type]) => ({date,name,type}));
+}
+const holOn = d => holidaysOf(+d.slice(0,4)).filter(h=>h.date===d);
+const isWeekend = d => [0,6].includes(parse(d).getDay());
+const isOff = d => isWeekend(d) || holOn(d).some(h=>h.type==="feriado" && !h.name.includes("após"));
+const WD = ["dom","seg","ter","qua","qui","sex","sáb"];
+const fmtDay = d => { const x = parse(d); return `${WD[x.getDay()]}, ${x.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})}`; };
+
+/* Agrupa feriados em blocos de folga e aponta onde uma emenda aumenta o descanso */
+function holidayBlocks(from, count){
+  const out = [], seen = new Set(), y0 = +from.slice(0,4);
+  const all = [...holidaysOf(y0), ...holidaysOf(y0+1)].filter(h => h.date >= from && !h.name.includes("após") && !h.name.includes("Cinzas"));
+  for (const h of all){
+    if (seen.has(h.date)) continue;
+    const off = d => isOff(d) || all.some(x=>x.date===d);
+    let s = h.date, e = h.date;
+    while (off(addDays(s,-1))) s = addDays(s,-1);
+    while (off(addDays(e,1))) e = addDays(e,1);
+    for (let d=s; d<=e; d=addDays(d,1)) seen.add(d);
+    const names = [...new Set(all.filter(x=>x.date>=s && x.date<=e).map(x=>x.name))];
+    const types = all.filter(x=>x.date>=s && x.date<=e).map(x=>x.type);
+    let bridge = null;
+    if (!off(addDays(s,-1)) && off(addDays(s,-2))){ let s2=addDays(s,-2); while(off(addDays(s2,-1))) s2=addDays(s2,-1); bridge = {day:addDays(s,-1), total: diffDays(s2,e)+1}; }
+    else if (!off(addDays(e,1)) && off(addDays(e,2))){ let e2=addDays(e,2); while(off(addDays(e2,1))) e2=addDays(e2,1); bridge = {day:addDays(e,1), total: diffDays(s,e2)+1}; }
+    let onWeekend = true; for (let d=s; d<=e; d=addDays(d,1)) if (!isWeekend(d)) onWeekend = false;
+    out.push({start:s, end:e, days:diffDays(s,e)+1, names, facultativo: types.every(t=>t==="facultativo"), bridge, onWeekend, date:h.date});
+    if (out.length >= count) break;
+  }
+  return out;
+}
+
+/* ============ AÇÕES / GOOGLE AGENDA ============ */
+function gcalUrl(a){
+  const g = goals.find(x=>x.id===a.goalId);
+  const p = new URLSearchParams({action:"TEMPLATE", text:a.title, details:(a.notes||"") + (g?`\n\nMeta: ${g.title}`:"") + "\n\nCriado no Painel de Metas", ctz:"America/Sao_Paulo"});
+  const ymd = d => d.replaceAll("-","");
+  if (a.time){ const [h,m] = a.time.split(":").map(Number); const pad = n=>String(n).padStart(2,"0"); const st = `${ymd(a.date)}T${pad(h)}${pad(m)}00`; const end = new Date(parse(a.date).setHours(h+1,m)); p.set("dates", `${st}/${ymd(iso(end))}T${pad(end.getHours())}${pad(end.getMinutes())}00`); }
+  else p.set("dates", `${ymd(a.date)}/${ymd(addDays(a.date,1))}`);
+  return "https://calendar.google.com/calendar/render?" + p.toString();
+}
+function actRow(a, showDate=true){
+  const g = goals.find(x=>x.id===a.goalId);
+  return `<div class="act ${a.done?"done":""}"><button class="chk ${a.done?"on":""}" data-actdone="${a.id}">✓</button>
+    ${showDate?`<span class="d">${fmtDay(a.date)}${a.time?"<br>"+a.time:""}</span>`:(a.time?`<span class="d">${a.time}</span>`:"")}
+    <span class="t" data-actedit="${a.id}" style="cursor:pointer">${esc(a.title)}${g?`<small>${AREAS[g.area]?.e||""} ${esc(g.title)}</small>`:""}</span>
+    <a class="gcal" href="${gcalUrl(a)}" target="_blank" rel="noopener" title="Adicionar ao Google Agenda">+ Google Agenda</a></div>`;
+}
+function openActionForm(a){
+  a = a ? structuredClone(a) : {id:uid(), title:"", date:today(), time:"", goalId:"", notes:"", done:false};
+  const isNew = !actions.some(x=>x.id===a.id);
+  $("modal").innerHTML = `<h2>${isNew?"Nova ação":"Editar ação"}</h2><div class="sub">Programe um passo concreto e, se quiser, mande para o Google Agenda.</div>
+    <div class="f"><label>O que fazer</label><input id="aTitle" value="${esc(a.title)}" placeholder="Ex.: Bloco de 3h para montar oferta PJ"></div>
+    <div class="f2"><div class="f"><label>Data</label><input type="date" id="aDate" value="${a.date}"></div><div class="f"><label>Horário (opcional)</label><input type="time" id="aTime" value="${a.time||""}"></div></div>
+    <div class="f"><label>Meta ligada (opcional)</label><select id="aGoal"><option value="">— nenhuma —</option>${goals.map(g=>`<option value="${g.id}" ${a.goalId===g.id?"selected":""}>${AREAS[g.area]?.e||""} ${esc(g.title)}</option>`).join("")}</select></div>
+    <div class="f"><label>Notas (opcional)</label><textarea id="aNotes" rows="3">${esc(a.notes||"")}</textarea></div>
+    <div id="aHol" style="font-size:12px;color:var(--warn)"></div>
+    <div class="actions">${!isNew?`<button class="btn danger" id="aDel">Excluir</button>`:""}<span class="sp"></span><button class="btn ghost" id="aCancel">Cancelar</button><button class="btn ghost" id="aSaveG">Salvar + Google Agenda</button><button class="btn" id="aSave">Salvar</button></div>`;
+  const showHol = () => { const hs = holOn($("aDate").value); $("aHol").textContent = hs.length ? "🏖️ " + hs.map(h=>h.name).join(", ") : ""; };
+  $("aDate").oninput = showHol; showHol();
+  const collect = () => { a.title=$("aTitle").value.trim(); a.date=$("aDate").value; a.time=$("aTime").value; a.goalId=$("aGoal").value; a.notes=$("aNotes").value; };
+  const doSave = async gc => { collect(); if(!a.title) return toast("Descreva a ação"); if(!a.date) return toast("Escolha a data");
+    if (gc) window.open(gcalUrl(a), "_blank", "noopener");
+    await save(a, "actions"); closeModal(); toast("Ação agendada 📅"); };
+  $("aSave").onclick = () => doSave(false);
+  $("aSaveG").onclick = () => doSave(true);
+  $("aCancel").onclick = closeModal;
+  if (!isNew) $("aDel").onclick = async () => { await store.remove("actions", a.id); closeModal(); toast("Ação excluída"); };
+  $("ov").classList.add("show");
+  setTimeout(()=>$("aTitle").focus(), 50);
+}
+function openDay(d){
+  const hs = holOn(d), dl = goals.filter(g=>g.deadline===d), as = actions.filter(a=>a.date===d).sort((x,y)=>(x.time||"").localeCompare(y.time||""));
+  $("modal").innerHTML = `<div id="dayPanel" data-day="${d}"><h2 style="text-transform:capitalize">${parse(d).toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</h2>
+    <div class="sub">${hs.map(h=>`🏖️ ${esc(h.name)}${h.type==="facultativo"?" (ponto facultativo)":""}`).join(" · ") || (isWeekend(d)?"Fim de semana":"Dia útil")}</div>
+    ${dl.length?`<div class="sec"><h5>Prazos de metas</h5>${dl.map(g=>`<div class="act"><span class="t" data-open="${g.id}" style="cursor:pointer">🚩 ${esc(g.title)}</span></div>`).join("")}</div>`:""}
+    <div class="sec"><h5>Ações</h5><div class="today-list" style="max-height:none">${as.length?as.map(a=>actRow(a,false)).join(""):`<div style="color:var(--mut);font-size:13px">Nada agendado.</div>`}</div></div>
+    <div class="actions"><button class="btn ghost" id="dpClose">Fechar</button><button class="btn" id="dpNew">+ Nova ação neste dia</button></div></div>`;
+  $("dpClose").onclick = closeModal;
+  $("dpNew").onclick = () => openActionForm({id:uid(), title:"", date:d, time:"", goalId:"", notes:"", done:false});
+  $("ov").classList.add("show");
+}
+
+function renderNext7(){
+  const t = today(), end = addDays(t,7);
+  const items = [
+    ...actions.filter(a=>a.date>=t && a.date<=end && !a.done).map(a=>({date:a.date, k:a.time||"99", html:actRow(a)})),
+    ...actions.filter(a=>a.date<t && !a.done).map(a=>({date:a.date, k:"00", html:actRow(a).replace('class="act','class="act" style="outline:1px solid var(--bad)')})),
+    ...goals.filter(g=>g.deadline && g.deadline>=t && g.deadline<=end).map(g=>({date:g.deadline, k:"98", html:`<div class="act"><span class="d">${fmtDay(g.deadline)}</span><span class="t" data-open="${g.id}" style="cursor:pointer">🚩 Prazo: ${esc(g.title)}</span></div>`})),
+    ...[0,1,2,3,4,5,6,7].flatMap(i=>holOn(addDays(t,i)).map(h=>({date:h.date, k:"97", html:`<div class="act"><span class="d">${fmtDay(h.date)}</span><span class="t">🏖️ ${esc(h.name)}</span></div>`})))
+  ].sort((a,b)=>a.date.localeCompare(b.date) || a.k.localeCompare(b.k));
+  $("next7").innerHTML = (items.length ? items.map(x=>x.html).join("") : `<div style="color:var(--mut);font-size:13px;padding:6px 0">Nada nos próximos 7 dias.</div>`) +
+    `<div style="margin-top:6px"><button class="btn ghost sm" data-newact="1">+ Agendar ação</button></div>`;
+}
+
+function renderBalance(){
+  const B = $("balance");
+  if (!finance || !finance.accounts){ B.innerHTML = `<div style="color:var(--mut);font-size:13px;line-height:1.5">Ainda não conectado.<br>Quando o robô do Open Finance estiver ativo, o saldo das suas contas aparece aqui automaticamente.</div>`; return; }
+  const brl = v => Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+  const bank = finance.accounts.filter(a=>a.type!=="CREDIT"), cards = finance.accounts.filter(a=>a.type==="CREDIT");
+  const total = bank.reduce((s,a)=>s+Number(a.balance||0),0);
+  const upd = finance.updatedAt ? new Date(finance.updatedAt).toLocaleString("pt-BR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
+  B.innerHTML = `<div class="bal-total">${brl(total)}</div><div style="font-size:11px;color:var(--mut);margin-bottom:8px">em conta · atualizado ${upd}</div>` +
+    bank.map(a=>`<div class="bal-row"><span>${esc(a.institution||"")} · ${esc(a.name||"")}</span><b>${brl(a.balance)}</b></div>`).join("") +
+    cards.map(a=>`<div class="bal-row"><span>💳 ${esc(a.institution||"")} · ${esc(a.name||"")}</span><b style="color:var(--bad)">${brl(a.balance)}</b></div>`).join("");
+}
+
+function renderCal(){
+  const [y,m] = calMonth.split("-").map(Number);
+  const first = `${calMonth}-01`, startD = addDays(first, -((parse(first).getDay()+6)%7));
+  { const t = parse(first).toLocaleDateString("pt-BR",{month:"long",year:"numeric"}); $("calTitle").textContent = t[0].toUpperCase() + t.slice(1); }
+  let h = ["seg","ter","qua","qui","sex","sáb","dom"].map(w=>`<div class="wd">${w}</div>`).join("");
+  for (let i=0;i<42;i++){
+    const d = addDays(startD,i); if (i>=35 && d.slice(0,7)!==calMonth) break;
+    const hs = holOn(d), as = actions.filter(a=>a.date===d), dl = goals.filter(g=>g.deadline===d);
+    const cls = ["cday", d.slice(0,7)!==calMonth?"out":"", d===today()?"tod":"", hs.some(x=>x.type==="feriado")?"hol":isWeekend(d)?"we":""].join(" ");
+    h += `<div class="${cls}" data-calday="${d}"><div class="n">${parse(d).getDate()}</div>` +
+      hs.map(x=>`<div class="ev" style="background:${x.type==="feriado"?"#a7780f":"#4b5568"}" title="${esc(x.name)}">${esc(x.name)}</div>`).join("") +
+      dl.map(g=>`<div class="ev" style="background:var(--bad)" title="Prazo: ${esc(g.title)}">🚩 ${esc(g.title)}</div>`).join("") +
+      as.map(a=>`<div class="ev" style="background:${a.done?"#2b3550":"var(--acc)"}" title="${esc(a.title)}">${a.time?a.time+" ":""}${esc(a.title)}</div>`).join("") + `</div>`;
+  }
+  $("calGrid").innerHTML = h;
+  const blocks = holidayBlocks(today(), 8);
+  $("holidays").innerHTML = blocks.map(b => {
+    const dur = b.onWeekend ? "cai no fim de semana" : `${b.days} dia${b.days>1?"s":""} de folga (${fmtDay(b.start)} → ${fmtDay(b.end)})`;
+    const br = b.bridge ? `<span class="badge">emenda ${fmtDay(b.bridge.day)} = ${b.bridge.total} dias</span>` : "";
+    const left = diffDays(today(), b.start);
+    return `<div class="hol-item"><b>${esc(b.names.join(" + "))}${b.facultativo?' <span style="font-size:11px;color:var(--mut)">(facultativo)</span>':""}</b>
+      <div class="meta">${dur}${br}<br>${left<=0?"é agora":`em ${left} dias`}</div>
+      <button class="btn ghost sm" data-plan="${b.start}|${esc(b.names[0])}">📌 Planejar algo</button></div>`;
+  }).join("");
+}
+
+function switchTab(t){ tab = t; document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("on", b.dataset.tab===t)); $("viewPainel").hidden = t!=="painel"; $("viewCal").hidden = t!=="cal"; render(); }
+document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+$("calPrev").onclick = () => { const d = parse(calMonth+"-01"); d.setMonth(d.getMonth()-1); calMonth = iso(d).slice(0,7); renderCal(); };
+$("calNext").onclick = () => { const d = parse(calMonth+"-01"); d.setMonth(d.getMonth()+1); calMonth = iso(d).slice(0,7); renderCal(); };
+$("calToday").onclick = () => { calMonth = today().slice(0,7); renderCal(); };
+
+/* Importar metas/ações de JSON (mesmo formato do backup) */
+$("fileImport").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    const gs = Array.isArray(data) ? data : (data.goals||[]), as = Array.isArray(data) ? [] : (data.actions||[]);
+    for (const g of gs){ g.id ||= uid(); g.createdAt ||= new Date().toISOString(); await save(g, "goals"); }
+    for (const a of as){ a.id ||= uid(); await save(a, "actions"); }
+    toast(`Importado: ${gs.length} metas, ${as.length} ações`);
+  } catch(err){ toast("Arquivo inválido: " + err.message); }
+  e.target.value = "";
+};
 const filt = {area:"all", status:"all", q:""};
 const charts = {};
-const $ = id => document.getElementById(id);
 function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2200); }
 
-async function save(g){ g.updatedAt = new Date().toISOString(); try { await store.save(g); } catch(e){ toast("Erro ao salvar: " + (e.code||e.message)); } }
+async function save(g, n="goals"){ g.updatedAt = new Date().toISOString(); try { await store.save(n, g); } catch(e){ toast("Erro ao salvar: " + (e.code||e.message)); } }
 
 function render(){
   const list = goals.map(g => ({g, c: calc(g)}));
@@ -365,6 +584,8 @@ function render(){
     `<input id="q" placeholder="Buscar meta..." value="${esc(filt.q)}">`;
   $("q").oninput = e => { filt.q = e.target.value; renderGrid(list); };
   renderGrid(list);
+  renderNext7(); renderBalance();
+  if (tab === "cal") renderCal();
 }
 
 function renderGrid(list){
@@ -389,8 +610,14 @@ function renderGrid(list){
 
 /* ============ EVENTOS GLOBAIS ============ */
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-check],[data-open],[data-fa],[data-fs]");
+  const t = e.target.closest("[data-check],[data-open],[data-fa],[data-fs],[data-calday],[data-actdone],[data-actedit],[data-newact],[data-plan]");
   if (!t) return;
+  if (t.dataset.calday){ openDay(t.dataset.calday); return; }
+  if (t.dataset.actdone){ const a = actions.find(x=>x.id===t.dataset.actdone); if (a){ a.done = !a.done; save(a,"actions"); if (a.done) toast("✓ Ação concluída. Très bien !"); } return; }
+  if (t.dataset.actedit){ const a = actions.find(x=>x.id===t.dataset.actedit); if (a) openActionForm(a); return; }
+  if (t.dataset.newact){ openActionForm(null); return; }
+  if (t.dataset.plan){ const [d,n] = t.dataset.plan.split("|"); openActionForm({id:uid(), title:`Planejar feriado: ${n}`, date:d, time:"", goalId:"", notes:"", done:false}); return; }
+  if (t.dataset.open && $("dayPanel")){ closeModal(); openDetail(t.dataset.open); return; }
   if (t.dataset.check){ e.stopPropagation(); toggleDay(t.dataset.check, today()); return; }
   if (t.dataset.fa){ filt.area = t.dataset.fa; render(); return; }
   if (t.dataset.fs){ filt.status = t.dataset.fs; render(); return; }
@@ -400,7 +627,7 @@ $("btnNew").onclick = () => openForm(null);
 $("ov").addEventListener("mousedown", e => { if (e.target.id === "ov") closeModal(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
 $("btnExport").onclick = () => {
-  const blob = new Blob([JSON.stringify(goals, null, 2)], {type:"application/json"});
+  const blob = new Blob([JSON.stringify({goals, actions}, null, 2)], {type:"application/json"});
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `metas-backup-${today()}.json`; a.click();
 };
 function closeModal(){ $("ov").classList.remove("show"); if (charts.det){ charts.det.destroy(); charts.det = null; } openId = null; }
@@ -443,7 +670,7 @@ function openForm(id){
       <div class="f"><label>Vezes por semana</label><input type="number" min="1" max="7" id="hPer" value="${g.habit?.perWeek||3}"></div></div>`;
     M.querySelectorAll("[data-type]").forEach(b => b.onclick = () => { collect(); type = b.dataset.type; draw(); });
     $("fCancel").onclick = closeModal;
-    if (id) $("fDel").onclick = async () => { if (confirm(`Excluir a meta "${g.title}"? Isso não pode ser desfeito.`)){ await store.remove(id); closeModal(); toast("Meta excluída"); } };
+    if (id) $("fDel").onclick = async () => { if (confirm(`Excluir a meta "${g.title}"? Isso não pode ser desfeito.`)){ await store.remove("goals", id); closeModal(); toast("Meta excluída"); } };
     $("fSave").onclick = async () => {
       collect();
       if (!g.title.trim()) return toast("Dê um nome à meta");
@@ -503,9 +730,11 @@ function drawDetail(){
     <div class="bar" style="--c:${a.c}"><i style="width:${c.p*100}%"></i>${c.expected!=null&&c.status!=="concluida"?`<u style="left:${c.expected*100}%"></u>`:""}</div>
     <div style="font-size:12px;color:var(--mut);margin-top:8px">${rit}</div>
     ${body}
-    <div class="actions"><button class="btn ghost" id="dEdit">Editar</button><span class="sp"></span><button class="btn" id="dClose">Fechar</button></div>`;
+    ${(()=>{ const as = actions.filter(a=>a.goalId===g.id && !a.done).sort((x,y)=>x.date.localeCompare(y.date)); return as.length?`<div class="sec"><h5>Ações agendadas</h5><div class="today-list" style="max-height:none">${as.map(a=>actRow(a)).join("")}</div></div>`:""; })()}
+    <div class="actions"><button class="btn ghost" id="dEdit">Editar</button><button class="btn ghost" id="dAct">📅 Agendar ação</button><span class="sp"></span><button class="btn" id="dClose">Fechar</button></div>`;
   $("dClose").onclick = closeModal;
   $("dEdit").onclick = () => { const id = g.id; closeModal(); openForm(id); };
+  $("dAct").onclick = () => { const id = g.id; closeModal(); openActionForm({id:uid(), title:"", date:today(), time:"", goalId:id, notes:"", done:false}); };
   if (g.type==="numeric"){
     $("dAdd").onclick = () => { const v = $("dVal").value; if (v===""||isNaN(v)) return toast("Informe um valor");
       g.numeric.current = Number(v); g.log = [...(g.log||[]), {date:today(), value:Number(v), note:$("dNote").value}]; save(g); toast("Valor registrado 📈"); };
@@ -538,7 +767,9 @@ function drawDetail(){
     try { store = await firebaseStore(); }
     catch(e){ $("banner").innerHTML = `<div class="banner">Erro ao conectar no Firebase: ${esc(e.message)}</div>`; return; }
   }
-  store.subscribe(list => { goals = list; render(); if (openId && $("ov").classList.contains("show") && !$("fTitle")) drawDetail(); });
+  store.subscribe("goals", list => { goals = list; render(); if (openId && $("ov").classList.contains("show") && !$("fTitle")) drawDetail(); });
+  store.subscribe("actions", list => { actions = list; render(); if ($("ov").classList.contains("show") && $("dayPanel")) openDay($("dayPanel").dataset.day); });
+  store.subscribe("finance", list => { finance = list.find(x=>x.id==="balances") || null; render(); });
 })();
 </script>
 </body>
