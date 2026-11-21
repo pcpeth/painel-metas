@@ -87,12 +87,30 @@ def fdata(d):
 
 
 # ------------------------------------------------------------ cálculo (mesmo do app)
-def livre(accounts, itens, goals, hoje):
+def saidas_fixas(fixas, gastos, ini, fim, hoje):
+    """Contas fixas cadastradas + cobranças recorrentes que saem da conta (não do cartão)."""
+    out = [(d, n, v) for d, n, v in entradas((fixas or {}).get("items") or [], ini, fim)]
+    ign = set((fixas or {}).get("ignoreRec") or [])
+    for r in (gastos or {}).get("recurring") or []:
+        if r.get("tipo") != "conta" or r.get("k") in ign:
+            continue
+        d = date.fromisoformat(r["proxima"])
+        if d <= hoje:
+            d = hoje + timedelta(days=1)      # ainda não veio este mês: conta como pendente
+        while d <= fim:
+            if d >= ini:
+                out.append((d, r.get("desc") or "Recorrente", float(r.get("media") or 0)))
+            d = date(d.year + (d.month == 12), 1 if d.month == 12 else d.month + 1, min(d.day, 28))
+    return sorted(out)
+
+
+def livre(accounts, itens, goals, hoje, fixas=None, gastos=None):
     ligadas = {(g.get("auto") or "")[4:] for g in goals if g.get("type") == "numeric" and (g.get("auto") or "").startswith("acc:")}
     saldo = sum(float(a.get("balance") or 0) for a in accounts
                 if a.get("type") != "CREDIT" and f"{a.get('institution')}|{a.get('name')}" not in ligadas)
     fim = hoje + timedelta(days=45)
     ev = [(d, 0, v, "💰 " + n) for d, n, v in entradas(itens, hoje + timedelta(days=1), fim)]
+    ev += [(d, 1, -v, "📌 " + n) for d, n, v in saidas_fixas(fixas, gastos, hoje, fim, hoje)]
     for a in accounts:
         if a.get("type") != "CREDIT":
             continue
@@ -129,8 +147,8 @@ def _streak(checks, hoje):
     return s
 
 
-def montar(accounts, gastos, goals, actions, itens, hoje):
-    L = livre(accounts, itens, goals, hoje)
+def montar(accounts, gastos, goals, actions, itens, hoje, fixas=None):
+    L = livre(accounts, itens, goals, hoje, fixas, gastos)
     linhas = []
     cor = "#2fbf71" if L["livre"] >= 0 else "#ef5b5b"
     topo = (f"<div style='font-size:13px;color:#8a94a8'>Pode gastar hoje</div>"
@@ -217,7 +235,8 @@ def talvez_enviar(db, uid, accounts, gastos, agora):
     actions = [d.to_dict() for d in base.collection("actions").stream()]
     inc = base.collection("finance").document("incomes").get()
     itens = (inc.to_dict() or {}).get("items", []) if inc.exists else []
-    assunto, html = montar(accounts, gastos, goals, actions, itens, hoje)
+    fx = base.collection("finance").document("fixed").get()
+    assunto, html = montar(accounts, gastos, goals, actions, itens, hoje, (fx.to_dict() or {}) if fx.exists else {})
     msg = MIMEMultipart("alternative")
     msg["Subject"], msg["From"], msg["To"] = assunto, f"Painel de Metas <{user}>", os.environ.get("EMAIL_TO", "").strip() or user
     msg.attach(MIMEText(html, "html", "utf-8"))

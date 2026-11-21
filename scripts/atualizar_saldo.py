@@ -250,25 +250,37 @@ def _chave_loja(desc):
     return re.sub(r"\s+", " ", d).strip()[:40]
 
 
-def resumo_gastos(movs, hoje):
-    """movs: [(date, valor>0, categoria, descricao, origem, parcelado)] -> totais por mês/categoria + recorrentes."""
+def resumo_gastos(movs, hoje, regras=None):
+    """movs: [(date, valor>0, categoria, descricao, origem, parcelado, id, tipo)] -> totais por mês/categoria,
+    recorrentes e a lista de gastos (para o app mostrar e deixar corrigir a categoria).
+    regras: {"byId": {id: grupo}, "byKey": {loja: grupo}} feitas pelo usuário no app; grupo "Ignorar" tira da conta."""
+    regras = regras or {}
+    por_id, por_loja = regras.get("byId") or {}, regras.get("byKey") or {}
+    itens = []
     meses = [add_months(date(hoje.year, hoje.month, 1), -i) for i in range(3, -1, -1)]   # 3 anteriores + atual
     chaves = [(m.year, m.month) for m in meses]
     por_mes = {k: defaultdict(float) for k in chaves}
-    lojas = defaultdict(lambda: {"meses": defaultdict(list), "desc": "", "cat": "", "origem": "", "ultima": None})
-    for dia, valor, cat, desc, origem, parcelado in movs:
+    lojas = defaultdict(lambda: {"meses": defaultdict(list), "desc": "", "cat": "", "origem": "", "ultima": None, "tipo": ""})
+    for dia, valor, cat, desc, origem, parcelado, tid, tipo in movs:
         k = (dia.year, dia.month)
-        g = grupo_de(cat)
-        if g is None or k not in por_mes:
+        if k not in por_mes:
+            continue
+        key = _chave_loja(desc)
+        g0 = grupo_de(cat)
+        g = por_id.get(tid) or por_loja.get(key) or g0
+        if g0 is None and g is None:
+            continue                      # transferência para si mesmo, investimento, pagamento de fatura...
+        itens.append({"id": tid, "d": dia.isoformat(), "v": round(valor, 2), "desc": (desc or "").strip()[:48],
+                      "g0": g0 or "Ignorar", "o": origem, "p": bool(parcelado), "k": key, "t": tipo})
+        if g is None or g == "Ignorar":
             continue
         por_mes[k][g] += valor
         if not parcelado:
-            key = _chave_loja(desc)
             if len(key) >= 3:
                 L = lojas[key]
                 L["meses"][k].append(valor)
                 if not L["ultima"] or dia >= L["ultima"]:
-                    L["ultima"], L["desc"], L["cat"], L["origem"] = dia, (desc or "").strip()[:40], g, origem
+                    L["ultima"], L["desc"], L["cat"], L["origem"], L["tipo"] = dia, (desc or "").strip()[:40], g, origem, tipo
     recorrentes = []
     completos = chaves[:3]
     for key, L in lojas.items():
@@ -281,13 +293,28 @@ def resumo_gastos(movs, hoje):
         if media < 5 or (max(totais) - min(totais)) > tolerancia * media + 1:
             continue
         prox = add_months(L["ultima"], 1)
-        recorrentes.append({"desc": L["desc"], "cat": L["cat"], "origem": L["origem"], "media": round(media, 2),
+        recorrentes.append({"desc": L["desc"], "cat": L["cat"], "origem": L["origem"], "media": round(media, 2), "k": key, "tipo": L["tipo"],
                             "meses": len(presentes), "ultima": L["ultima"].isoformat(), "proxima": prox.isoformat(),
                             "esteMes": (hoje.year, hoje.month) in L["meses"]})
     recorrentes.sort(key=lambda r: -r["media"])
     return {"months": [{"ym": f"{y}-{m:02d}", "total": round(sum(por_mes[(y, m)].values()), 2),
                         "byCat": {g: round(v, 2) for g, v in sorted(por_mes[(y, m)].items(), key=lambda x: -x[1])}} for (y, m) in chaves],
-            "recurring": recorrentes[:20], "monthDay": hoje.day}
+            "recurring": recorrentes[:20], "monthDay": hoje.day,
+            "items": sorted(itens, key=lambda x: x["d"], reverse=True)[:1500]}
+
+
+_FS = {}
+
+
+def firestore_col():
+    """Conecta ao Firestore uma vez só e devolve (db, uid, coleção finance do usuário)."""
+    if not _FS:
+        firebase_admin.initialize_app(credentials.Certificate(json.loads(env("FIREBASE_SERVICE_ACCOUNT"))))
+        db = firestore.client()
+        # o UID do Firebase só tem letras/números: remove espaços, pontos ou aspas colados por engano
+        uid = re.sub(r"[^A-Za-z0-9]", "", env("FIREBASE_UID"))
+        _FS.update(db=db, uid=uid, col=db.collection("users").document(uid).collection("finance"))
+    return _FS["db"], _FS["uid"], _FS["col"]
 
 
 def main():
@@ -339,7 +366,8 @@ def main():
                         continue                  # pagamento de fatura sai da conta mas o gasto já conta no cartão
                     meta = t.get("creditCardMetadata") or {}
                     movs.append((dia, abs(valor), t.get("category") or "", t.get("description") or "", origem,
-                                 int(meta.get("totalInstallments") or 0) > 1))
+                                 int(meta.get("totalInstallments") or 0) > 1, str(t.get("id") or ""),
+                                 "cartao" if acc.get("type") == "CREDIT" else "conta"))
                 accounts.append({
                     "forecast": previsao,
                     "billsHist": historico,
@@ -363,18 +391,14 @@ def main():
         sys.exit("Nenhuma conta lida; nada foi gravado")
 
     # 3) Grava no Firestore (Admin SDK)
-    cred = credentials.Certificate(json.loads(env("FIREBASE_SERVICE_ACCOUNT")))
-    firebase_admin.initialize_app(cred)
-    db = firestore.client()
+    db, uid, col = firestore_col()
     now = datetime.now(timezone.utc)
-    # o UID do Firebase só tem letras/números: remove espaços, pontos ou aspas colados por engano
-    uid = re.sub(r"[^A-Za-z0-9]", "", env("FIREBASE_UID"))
-    col = db.collection("users").document(uid).collection("finance")
     payload = {"updatedAt": now.isoformat(), "accounts": accounts}
     col.document("balances").set(payload)
     # histórico diário (um documento por dia) para gráficos futuros
-    col.document("hist-" + now.strftime("%Y-%m-%d")).set(payload)
-    gastos = resumo_gastos(movs, hoje)
+    db.collection("users").document(uid).collection("financeHist").document(now.strftime("%Y-%m-%d")).set(payload)
+    regras = col.document("catRules").get()
+    gastos = resumo_gastos(movs, hoje, (regras.to_dict() or {}) if regras.exists else {})
     gastos["updatedAt"] = now.isoformat()
     col.document("spending").set(gastos)
 
@@ -385,9 +409,20 @@ def main():
         enviado = f"falhou ({type(e).__name__})"
 
     nf = sum(len(a["forecast"]) for a in accounts)
+    col.document("robotStatus").set({"ok": True, "at": now.isoformat(), "contas": len(accounts), "falhas": falhas,
+                                     "msg": f"{falhas} conexão(ões) com falha" if falhas else ""})
     print(f"OK: {len(accounts)} contas atualizadas, {nf} faturas previstas, {len(movs)} gastos lidos, "
           f"{len(gastos['recurring'])} recorrentes, {falhas} conexões com falha; e-mail: {enviado}")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException as e:   # registra a falha para o painel avisar (mensagens são nossas, sem segredos)
+        msg = str(e) if isinstance(e, SystemExit) else f"erro inesperado ({type(e).__name__})"
+        try:
+            firestore_col()[2].document("robotStatus").set(
+                {"ok": False, "at": datetime.now(timezone.utc).isoformat(), "msg": msg[:160]})
+        except Exception:
+            pass
+        raise

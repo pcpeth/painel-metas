@@ -177,6 +177,11 @@ td.r{text-align:right}
 .rec-row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
 .rec-row:last-child{border:0}
 .rec-row small{color:var(--mut)}
+.foldh{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center}
+.foldh::after{content:"▾";color:var(--mut);font-size:14px}
+.card.folded .foldh{margin-bottom:0}
+.card.folded .foldh::after{content:"▸"}
+.card.folded > :not(.foldh){display:none}
 .commit .aperto{margin-top:6px;padding:6px 8px;border-radius:8px;background:rgba(239,91,91,.12);font-size:12.5px}
 .inc-row{display:grid;grid-template-columns:1.4fr 1.1fr .6fr 1.1fr auto;gap:6px;align-items:center;margin-top:8px}
 .inc-row input,.inc-row select{min-width:0;width:100%}
@@ -279,10 +284,10 @@ td.r{text-align:right}
     <div class="card ins-card"><h3>💡 Alertas</h3><div id="insHoje" class="ins-list"></div></div>
     <div class="card"><h3>🔥 Hábitos de hoje</h3><div id="hojeHabits" class="big-habits"></div></div>
     <div class="card"><h3>✅ Ações</h3><div id="hojeActs" class="today-list" style="max-height:none"></div></div>
-    <div class="card"><h3>🧩 Próximas etapas</h3><div id="hojeSteps" class="today-list" style="max-height:none"></div></div>
-    <div class="card"><h3>📈 Registro rápido</h3><div id="hojeNums"></div></div>
-    <div class="card" id="hojeSpendCard" hidden><h3>🧭 Gastos do mês</h3><div id="hojeSpend"></div></div>
-    <div class="card" id="hojeBalCard"><h3>🏦 Saldo</h3><div id="hojeBal"></div></div>
+    <div class="card" data-foldcard="steps"><h3 class="foldh" data-fold="steps">🧩 Próximas etapas</h3><div id="hojeSteps" class="today-list" style="max-height:none"></div></div>
+    <div class="card" data-foldcard="nums"><h3 class="foldh" data-fold="nums">📈 Registro rápido</h3><div id="hojeNums"></div></div>
+    <div class="card" id="hojeSpendCard" data-foldcard="spend" hidden><h3 class="foldh" data-fold="spend">🧭 Gastos do mês</h3><div id="hojeSpend"></div></div>
+    <div class="card" id="hojeBalCard" data-foldcard="bal"><h3 class="foldh" data-fold="bal">🏦 Saldo e faturas</h3><div id="hojeBal"></div></div>
   </div>
 
   <div id="viewPainel">
@@ -498,7 +503,7 @@ document.getElementById("btnLogin").onclick = async () => {
 };
 
 /* ============ ESTADO E RENDER ============ */
-let goals = [], actions = [], finance = null, incomes = null, spending = null;
+let goals = [], actions = [], finance = null, incomes = null, spending = null, fixed = null, catRules = null, robotStatus = null;
 const $ = id => document.getElementById(id);
 let tab = (()=>{ try { return localStorage.getItem("pm-tab") || (matchMedia("(max-width:760px)").matches ? "hoje" : "painel"); } catch { return "painel"; } })(), calMonth = today().slice(0,7);
 
@@ -584,10 +589,11 @@ function openActionForm(a){
   setTimeout(()=>$("aTitle").focus(), 50);
 }
 function openDay(d){
-  const hs = holOn(d), dl = goals.filter(g=>g.deadline===d), as = actions.filter(a=>a.date===d).sort((x,y)=>(x.time||"").localeCompare(y.time||"")), bl = allBills().filter(b=>b.due===d), il = incomesBetween(d,d), rl = recurringOn(d);
+  const hs = holOn(d), dl = goals.filter(g=>g.deadline===d), as = actions.filter(a=>a.date===d).sort((x,y)=>(x.time||"").localeCompare(y.time||"")), bl = allBills().filter(b=>b.due===d), il = incomesBetween(d,d), rl = recurringOn(d), fl = fixedBetween(d,d).filter(x=>x.src==="fixa");
   $("modal").innerHTML = `<div id="dayPanel" data-day="${d}"><h2 style="text-transform:capitalize">${parse(d).toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</h2>
     <div class="sub">${hs.map(h=>`🏖️ ${esc(h.name)}${h.type==="facultativo"?" (ponto facultativo)":""}`).join(" · ") || (isWeekend(d)?"Fim de semana":"Dia útil")}</div>
     ${bl.length?`<div class="sec"><h5>Faturas</h5>${bl.map(b=>`<div class="bill-row"><span>💳 ${esc(b.card)}${b.real?'<span class="tagreal">fechada</span>':'<span class="tagest">estimada</span>'}</span><b>${brl(b.amount)}</b></div>`).join("")}</div>`:""}
+    ${fl.length?`<div class="sec"><h5>Contas fixas</h5>${fl.map(x=>`<div class="bill-row"><span>📌 ${esc(x.name)}</span><b style="color:var(--bad)">${brl(x.amount)}</b></div>`).join("")}</div>`:""}
     ${rl.length?`<div class="sec"><h5>Cobranças recorrentes (previsão)</h5>${rl.map(r=>`<div class="bill-row"><span>🔁 ${esc(r.desc)}<br><small>${esc(r.origem||"")}</small></span><b>~${brl(r.media)}</b></div>`).join("")}</div>`:""}
     ${il.length?`<div class="sec"><h5>Entradas previstas</h5>${il.map(x=>`<div class="bill-row"><span>💰 ${esc(x.name)}</span><b style="color:var(--ok)">${brl(x.amount)}</b></div>`).join("")}</div>`:""}
     ${dl.length?`<div class="sec"><h5>Prazos de metas</h5>${dl.map(g=>`<div class="act"><span class="t" data-open="${g.id}" style="cursor:pointer">🚩 ${esc(g.title)}</span></div>`).join("")}</div>`:""}
@@ -603,6 +609,11 @@ function openDay(d){
 const brl = v => Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 function insights(){
   const out = [], t = today(), hour = new Date().getHours();
+  if (robotStatus && robotStatus.ok === false) out.push({p:0, lv:"bad", ic:"🤖", tx:`O robô do banco falhou na última tentativa (${fmtDate(robotStatus.at.slice(0,10))}): ${esc(robotStatus.msg||"erro")}. Os saldos podem estar velhos — se o banco pediu nova autorização, reconecte no Meu Pluggy.`});
+  else if (finance && finance.updatedAt){ const hrs = (Date.now() - new Date(finance.updatedAt).getTime())/36e5;
+    if (hrs > 26) out.push({p:0, lv:"bad", ic:"⏳", tx:`Os dados do banco são de <b>${hrs>48?Math.round(hrs/24)+" dias":Math.round(hrs)+" horas"}</b> atrás. O robô pode ter parado (GitHub Actions) ou a conexão do banco expirou no Meu Pluggy.`}); }
+  if (incItems().some(i=>Number(i.amount)>0) && finance && !goals.some(g=>/aperto/i.test(g.title||""))){ const f = cashFlow(45);
+    if (f.min.bal < 0) out.push({p:2, lv:"warn", ic:"🧭", tx:`Antes da reserva, o passo é parar de fechar no vermelho. Quer uma meta "<b>Fechar 2 meses sem aperto</b>"?`, mkgoal:1}); }
   for (const g of goals){
     const c = calc(g);
     if (c.status === "concluida") continue;
@@ -665,18 +676,22 @@ function renderInsights(el, max){
     x.plan?`<button class="btn ghost sm" data-planfor="${x.plan}">Agendar</button>`:
     x.planDay?`<button class="btn ghost sm" data-plan="${esc(x.planDay)}">Planejar</button>`:
     x.open?`<button class="btn ghost sm" data-open="${x.open}">Ver</button>`:
-    x.incomes?`<button class="btn ghost sm" data-incomes="1">💰</button>`:""}</div>`).join("") +
+    x.incomes?`<button class="btn ghost sm" data-incomes="1">💰</button>`:
+    x.mkgoal?`<button class="btn sm" data-mkgoal="1">Criar</button>`:""}</div>`).join("") +
     (L.length > max ? `<div style="font-size:12px;color:var(--mut);text-align:center">+ ${L.length-max} alerta${L.length-max>1?"s":""}</div>` : "");
 }
 
 /* ============ TELA HOJE ============ */
+const FOLD_DEFAULT = {steps:false, nums:true, spend:true, bal:true};
+function foldState(){ try { return {...FOLD_DEFAULT, ...JSON.parse(localStorage.getItem("pm-fold")||"{}")}; } catch { return {...FOLD_DEFAULT}; } }
+function applyFolds(){ const F = foldState(); document.querySelectorAll("[data-foldcard]").forEach(c => c.classList.toggle("folded", !!F[c.dataset.foldcard])); }
 function renderHoje(){
   const t = today(), h = new Date().getHours();
   $("helloTitle").textContent = (h<12?"Bom dia":h<18?"Boa tarde":"Boa noite") + (userName?`, ${userName}`:"") + "!";
   const dstr = parse(t).toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"});
   $("helloSub").textContent = dstr[0].toUpperCase() + dstr.slice(1) + (holOn(t).length?` · 🏖️ ${holOn(t)[0].name}`:"");
   const th = tileHtml(); $("tileHoje").hidden = !th; $("tileHoje").innerHTML = th;
-  renderInsights($("insHoje"), 4);
+  renderInsights($("insHoje"), 3); applyFolds();
   const hs = goals.filter(g=>g.type==="habit" && calc(g).status!=="concluida");
   $("hojeHabits").innerHTML = hs.length ? hs.map(g => { const x = habitInfo(g);
     const sub = g.habit.freq==="weekly" ? (()=>{ const ws=weekStart(t); let n=0; for(let i=0;i<7;i++) if((g.habit.checks||[]).includes(addDays(ws,i))) n++; return `${n}/${g.habit.perWeek} na semana`; })() : `🔥 ${x.streak} ${x.unit}`;
@@ -733,6 +748,7 @@ function openPlus(){
 function openMenu(){
   $("modal").innerHTML = `<h2>Menu</h2><div class="sheet" style="margin-top:12px">
     <button class="btn ghost" data-incomes="1">💰 Entradas previstas (salário)</button>
+    <button class="btn ghost" data-fixed="1">📌 Contas fixas</button>
     <button class="btn ghost" id="mExp">⬇ Baixar backup</button>
     <label class="btn ghost" style="cursor:pointer">⬆ Importar backup<input type="file" accept=".json,application/json" hidden id="mImp"></label>
     ${fb.auth?`<button class="btn ghost" id="mOut">🚪 Sair da conta</button>`:""}
@@ -750,7 +766,7 @@ $("btnMenu").onclick = openMenu;
 /* ============ CACHE LOCAL (abre instantâneo) ============ */
 const CACHE_KEY = "pm-cache-v1";
 let userName = "";
-function saveCache(){ if (LOCAL) return; try { localStorage.setItem(CACHE_KEY, JSON.stringify({goals, actions, finance, incomes, spending, userName, at: Date.now()})); } catch {} }
+function saveCache(){ if (LOCAL) return; try { localStorage.setItem(CACHE_KEY, JSON.stringify({goals, actions, finance, incomes, spending, fixed, catRules, robotStatus, userName, at: Date.now()})); } catch {} }
 function loadCache(){ try { return JSON.parse(localStorage.getItem(CACHE_KEY)); } catch { return null; } }
 function clearCache(){ try { localStorage.removeItem(CACHE_KEY); } catch {} }
 
@@ -795,9 +811,19 @@ function tileHtml(){
     <div class="sub">${L.liv>=0?`${brl(L.liv)} livres`:L.min.bal<0?`Faltam ${brl(-L.min.bal)} para as faturas`:`Só ${brl(L.min.bal)} de folga, menos que a parcela da reserva`}${L.ni?` até ${esc(L.ni.name)} (${fmtDate(L.ni.date)}, ${L.days} dia${L.days>1?"s":""})`:""}${L.res>0?` · já separando ${brl(L.res)} para a reserva`:""}${L.padrao?`<br>Seu padrão de compras novas no cartão: ~${brl(L.padrao)}/dia`:""}</div></div>
     <button class="btn ghost sm" data-incomes="1">💰</button>`;
 }
+const CAT_LIST = ["Mercado","Comer fora e delivery","Transporte","Casa e contas","Assinaturas digitais","Compras","Saúde e bem-estar","Educação","Lazer e viagens","Pix e transferências","Boletos","Taxas e juros","Empréstimos","Seguros","Apostas","Pensão","Doações","Outros","Ignorar"];
+function catOf(it){ const R = catRules || {}; return (R.byId||{})[it.id] || (R.byKey||{})[it.k] || it.g0; }
+/* refaz os totais por mês aplicando as correções de categoria feitas no app (o robô aplica as mesmas na próxima rodada) */
+function spendMonths(){
+  if (!spending) return [];
+  if (!(spending.items||[]).length) return spending.months || [];
+  return (spending.months||[]).map(m => { const by = {};
+    for (const it of spending.items) if (it.d.slice(0,7) === m.ym){ const c = catOf(it); if (c && c !== "Ignorar") by[c] = (by[c]||0) + Number(it.v||0); }
+    return {ym: m.ym, byCat: by, total: Object.values(by).reduce((s,v)=>s+v,0)}; });
+}
 function spendInfo(){
   if (!spending || !(spending.months||[]).length) return null;
-  const M = spending.months, cur = M[M.length-1], prev = M.slice(0,-1).filter(m=>m.total>0), t = today();
+  const M = spendMonths(), cur = M[M.length-1], prev = M.slice(0,-1).filter(m=>m.total>0), t = today();
   const avg = prev.length ? prev.reduce((s,m)=>s+m.total,0)/prev.length : 0;
   const isCur = cur.ym === t.slice(0,7), dia = isCur ? Number(t.slice(8,10)) : 30, last = new Date(+cur.ym.slice(0,4), +cur.ym.slice(5,7), 0).getDate();
   const FIXOS = ["Assinaturas digitais","Casa e contas","Educação","Seguros","Empréstimos","Pensão"];
@@ -822,9 +848,9 @@ function renderSpend(){
     options:{maintainAspectRatio:false, cutout:"62%", plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.label}: ${brl(c.raw)}`}}}}});
   const mx = Math.max(1, ...S.rows.map(r=>Math.max(r.proj, r.a)));
   $("spendSide").innerHTML = S.rows.slice(0,8).map(r => { const d = r.a ? (r.proj/r.a-1)*100 : null;
-    return `<div class="cat-row"><span><span style="color:${catCol(r.c)}">●</span> ${esc(r.c)}${d!==null && S.isCur && Math.abs(d)>=15 ? `<span class="dl" style="color:${d>0?"var(--bad)":"var(--ok)"}">${d>0?"▲":"▼"} ${Math.round(Math.abs(d))}%</span>`:""}</span><b>${brl(r.v)}</b>
+    return `<div class="cat-row" data-cat="${esc(r.c)}" style="cursor:pointer"><span><span style="color:${catCol(r.c)}">●</span> ${esc(r.c)}${d!==null && S.isCur && Math.abs(d)>=15 ? `<span class="dl" style="color:${d>0?"var(--bad)":"var(--ok)"}">${d>0?"▲":"▼"} ${Math.round(Math.abs(d))}%</span>`:""}</span><b>${brl(r.v)}</b>
       <div class="bar" title="média ${brl(r.a)}"><i style="width:${r.v/mx*100}%;background:${catCol(r.c)}"></i></div></div>`; }).join("") +
-    `<div style="font-size:11px;color:var(--mut);margin-top:6px">▲▼ = projeção do mês contra a média dos 3 meses anteriores. Sem transferências entre suas contas nem pagamento de fatura.</div>`;
+    `<div style="font-size:11px;color:var(--mut);margin-top:6px">▲▼ = projeção do mês contra a média dos 3 meses anteriores. Toque numa categoria para ver as compras e corrigir.</div>`;
   $("spendRec").innerHTML = S.rec.length ? `<div class="sec" style="margin-top:12px"><h5 style="margin:0 0 4px;font-size:12px;color:var(--mut);text-transform:uppercase">🔁 Cobranças recorrentes · ~${brl(S.recTot)}/mês</h5>` +
     S.rec.slice(0,10).map(r=>`<div class="rec-row"><span>${esc(r.desc)}<br><small>${esc(r.cat)} · ${esc(r.origem||"")} · ${r.meses} meses seguidos</small></span><span style="text-align:right"><b>${brl(r.media)}</b><br><small>${r.esteMes?"✓ já veio este mês":r.proxima<today()?`<span style="color:var(--warn)">não veio ainda (era ~${fmtDate(r.proxima)})</span>`:`próx. ~${fmtDate(r.proxima)}`}</small></span></div>`).join("") + `</div>` : "";
   const t5 = top.slice(0,3);
@@ -832,6 +858,27 @@ function renderSpend(){
     (S.isCur && S.avg ? `<div class="bal-row"><span>No ritmo atual</span><b style="color:${dif>10?"var(--bad)":"var(--txt)"}">${brl(S.ritmo)} <small style="color:var(--mut);font-weight:500">(${dif>=0?"+":""}${Math.round(dif)}% da média)</small></b></div>` : "") +
     t5.map(r=>`<div class="bal-row"><span><span style="color:${catCol(r.c)}">●</span> ${esc(r.c)}</span><b>${brl(r.v)}</b></div>`).join("") +
     (S.rec.length ? `<div style="font-size:12px;color:var(--mut);margin-top:6px">🔁 ${S.rec.length} recorrentes · ~${brl(S.recTot)}/mês</div>` : "");
+}
+function openCat(cat, ym){
+  const yms = (spending.months||[]).map(m=>m.ym); ym = ym || yms[yms.length-1];
+  const L = (spending.items||[]).filter(it => it.d.slice(0,7) === ym && catOf(it) === cat).sort((a,b)=>b.v-a.v);
+  const mesLbl = m => parse(m+"-01").toLocaleDateString("pt-BR",{month:"short",year:"2-digit"});
+  $("modal").innerHTML = `<h2><span style="color:${catCol(cat)}">●</span> ${esc(cat)}</h2>
+    <div class="sub">${L.length} compra${L.length!==1?"s":""} · <b>${brl(L.reduce((s,i)=>s+Number(i.v),0))}</b></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${yms.map(m=>`<button class="btn ${m===ym?"":"ghost"} sm" data-catym="${m}">${mesLbl(m)}</button>`).join("")}</div>
+    <label style="font-size:12.5px;color:var(--mut);display:flex;gap:6px;align-items:center;margin-bottom:6px"><input type="checkbox" id="catAll" checked> Ao corrigir, aplicar a todas as compras da mesma loja</label>
+    <div style="max-height:55vh;overflow:auto">${L.map(it=>`<div class="rec-row"><span style="min-width:0">${esc(it.desc)}<br><small>${fmtDate(it.d)} · ${esc(it.o||"")}${it.p?" · parcela":""}</small>
+      <select class="catSel" data-id="${esc(it.id)}" data-k="${esc(it.k)}" style="margin-top:4px;max-width:200px">${CAT_LIST.map(c=>`<option ${c===cat?"selected":""}>${c}</option>`).join("")}</select></span><b>${brl(it.v)}</b></div>`).join("") || `<div style="color:var(--mut);font-size:13px">Nada nesta categoria neste mês.</div>`}</div>
+    <div style="font-size:11.5px;color:var(--mut);margin-top:8px">"Ignorar" tira a compra das contas (ex.: transferência para você mesmo). Totais mudam na hora; recorrentes e e-mail se ajustam na próxima atualização do robô.</div>
+    <div class="actions"><button class="btn" id="catClose">Fechar</button></div>`;
+  document.querySelectorAll("[data-catym]").forEach(b => b.onclick = () => openCat(cat, b.dataset.catym));
+  document.querySelectorAll(".catSel").forEach(sel => sel.onchange = async () => {
+    const R = {id:"catRules", byId:{...((catRules||{}).byId||{})}, byKey:{...((catRules||{}).byKey||{})}};
+    if ($("catAll").checked && sel.dataset.k && sel.dataset.k.length >= 3) R.byKey[sel.dataset.k] = sel.value; else R.byId[sel.dataset.id] = sel.value;
+    R.updatedAt = new Date().toISOString(); catRules = R; await store.save("finance", R);
+    toast(`Movido para ${sel.value}`); render(); openCat(cat, ym); });
+  $("catClose").onclick = closeModal;
+  $("ov").classList.add("show");
 }
 function recurringOn(d){ return (spending && spending.recurring || []).filter(r => !r.esteMes || r.proxima > today() ? r.proxima === d : false); }
 /* Metas que se atualizam sozinhas a partir do saldo das contas */
@@ -875,11 +922,26 @@ function incomesBetween(from, to){
 function cashFlow(days, novos=false){
   const t = today(), end = addDays(t, days);
   const ev = [...incomesBetween(addDays(t,1), end).map(x=>({date:x.date, v:x.amount, k:0, tx:"💰 "+x.name})),
-              ...allBills().filter(b=>b.due>=t && b.due<=end).map(b=>({date:b.due, v:-(Number(b.amount||0) + (novos ? Number(b.novos||0) : 0)), k:1, tx:"💳 "+b.inst}))]
+              ...allBills().filter(b=>b.due>=t && b.due<=end).map(b=>({date:b.due, v:-(Number(b.amount||0) + (novos ? Number(b.novos||0) : 0)), k:1, tx:"💳 "+b.inst})),
+              ...fixedBetween(t, end).map(x=>({date:x.date, v:-x.amount, k:1, fx:1, tx:"📌 "+x.name}))]
     .sort((a,b)=>a.date.localeCompare(b.date) || a.k-b.k);
   let bal = emConta(), min = {bal, date:t, tx:"hoje"};
   for (const e of ev){ bal += e.v; e.bal = bal; if (e.k===1 && bal < min.bal) min = {bal, date:e.date, tx:e.tx}; }
-  return {ev, end:bal, min, inc: ev.filter(e=>e.k===0).reduce((s,e)=>s+e.v,0), out: -ev.filter(e=>e.k===1).reduce((s,e)=>s+e.v,0)};
+  return {ev, end:bal, min, inc: ev.filter(e=>e.k===0).reduce((s,e)=>s+e.v,0), out: -ev.filter(e=>e.k===1 && !e.fx).reduce((s,e)=>s+e.v,0), fix: -ev.filter(e=>e.fx).reduce((s,e)=>s+e.v,0)};
+}
+/* ============ CONTAS FIXAS (saídas que não passam pelo cartão) ============ */
+function fixItems(){ return (fixed && fixed.items) || []; }
+function bankRecurring(){ const ign = new Set((fixed && fixed.ignoreRec) || []); return ((spending && spending.recurring) || []).filter(r => r.tipo === "conta" && !ign.has(r.k)); }
+function nextMonthSameDay(d){ const [y,m,dd] = d.split("-").map(Number); const ny = m===12?y+1:y, nm = m===12?1:m+1; return `${ny}-${String(nm).padStart(2,"0")}-${String(Math.min(dd,28)).padStart(2,"0")}`; }
+function fixedBetween(from, to){
+  const out = [], t = today(); let ym = from.slice(0,7);
+  while (ym <= to.slice(0,7)){
+    for (const it of fixItems()) if (Number(it.amount) > 0){ const d = incDateIn(it, ym); if (d >= from && d <= to) out.push({date:d, name:it.name, amount:Number(it.amount), src:"fixa"}); }
+    const [y,m] = ym.split("-").map(Number); ym = m===12 ? `${y+1}-01` : `${y}-${String(m+1).padStart(2,"0")}`;
+  }
+  for (const r of bankRecurring()){ let d = r.proxima <= t ? addDays(t,1) : r.proxima;   /* ainda não veio: conta como pendente */
+    while (d <= to){ if (d >= from) out.push({date:d, name:r.desc, amount:Number(r.media||0), src:"auto"}); d = nextMonthSameDay(d); } }
+  return out.sort((a,b)=>a.date.localeCompare(b.date));
 }
 function nextIncome(after){ return incomesBetween(addDays(after,1), addDays(after,62))[0] || null; }
 function commitHtml(){
@@ -887,17 +949,24 @@ function commitHtml(){
   const cor = v => `<b style="color:var(${v>=0?"--ok":"--bad"})">${brl(v)}</b>`;
   let h = `<div class="commit">Em conta hoje${lk?" (fora a reserva)":""}: <b>${brl(saldo)}</b><br>` +
     (has ? `+ Entradas previstas (30 dias): <b style="color:var(--ok)">${brl(f.inc)}</b><br>` : "") +
-    `− Faturas (30 dias): <b>${brl(f.out)}</b><br>= ${f.end>=0?"Sobra":"Falta"} no fim do período: ${cor(f.end)}`;
+    `− Faturas (30 dias): <b>${brl(f.out)}</b><br>` + (f.fix ? `− Contas fixas e recorrentes (30 dias): <b>${brl(f.fix)}</b><br>` : "") +
+    `= ${f.end>=0?"Sobra":"Falta"} no fim do período: ${cor(f.end)}`;
   if (has && f.min.bal < 0){ const ni = nextIncome(f.min.date);
     h += `<div class="aperto">⚠️ Aperto em <b>${fmtDate(f.min.date)}</b> (${esc(f.min.tx)}): saldo projetado ${cor(f.min.bal)}${ni?` até ${esc(ni.name)} em ${fmtDate(ni.date)}`:""}.</div>`; }
   else if (has && f.ev.length) h += `<div style="color:var(--mut);font-size:12px;margin-top:4px">Ponto mais baixo: ${brl(f.min.bal)} em ${fmtDate(f.min.date)}</div>`;
   if (avgNovosMes() > 0 && has){ const g = cashFlow(45, true); h += `<div style="font-size:12px;color:var(--mut);margin-top:4px">Contando suas compras de costume no cartão (~${brl(avgNovosMes())}/mês), o ponto mais baixo nos próximos 45 dias fica em <b style="color:var(${g.min.bal>=0?"--ok":"--bad"})">${brl(g.min.bal)}</b> (${fmtDate(g.min.date)}).</div>`; }
-  return h + `<div style="margin-top:6px"><button class="btn ghost sm" data-incomes="1">💰 ${has?"Editar entradas":"Cadastrar salário"}</button></div></div>`;
+  return h + `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" data-incomes="1">💰 ${has?"Editar entradas":"Cadastrar salário"}</button><button class="btn ghost sm" data-fixed="1">📌 Contas fixas${fixItems().length?` (${fixItems().length})`:""}</button></div></div>`;
 }
-function openIncomes(){
-  let items = JSON.parse(JSON.stringify(incItems().length ? incItems() : INC_DEFAULT));
+function openIncomes(){ openFlow("incomes"); }
+function openFlow(kind){
+  const isFix = kind === "fixed";
+  let items = JSON.parse(JSON.stringify(isFix ? fixItems() : (incItems().length ? incItems() : INC_DEFAULT)));
+  if (isFix && !items.length) items.push({id:uid(), name:"", rule:"fixed", day:10, amount:0});
+  let ign = new Set((fixed && fixed.ignoreRec) || []);
+  const recs = ((spending && spending.recurring) || []).filter(r => r.tipo === "conta");
   const draw = () => {
-    $("modal").innerHTML = `<h2>💰 Entradas previstas</h2><div class="sub">Usadas para projetar o saldo contra as faturas. Ficam só na sua conta do Firebase.</div>
+    $("modal").innerHTML = (isFix ? `<h2>📌 Contas fixas</h2><div class="sub">Aluguel, luz, internet, empréstimo, boleto… tudo que sai da conta e não passa pelo cartão. Entram no "pode gastar hoje".</div>`
+      : `<h2>💰 Entradas previstas</h2><div class="sub">Usadas para projetar o saldo contra as faturas. Ficam só na sua conta do Firebase.</div>`) + `
       <div id="incList">${items.map((it,i)=>`<div class="inc-row" data-i="${i}">
         <input class="in-name" value="${esc(it.name)}" placeholder="Nome">
         <select class="in-rule"><option value="fixed"${it.rule==="fixed"?" selected":""}>Dia fixo</option><option value="bizday"${it.rule==="bizday"?" selected":""}>Dia útil nº</option></select>
@@ -905,15 +974,21 @@ function openIncomes(){
         <input class="in-amt" type="number" step="0.01" min="0" inputmode="decimal" placeholder="R$ valor" value="${Number(it.amount)>0?it.amount:""}">
         <button class="btn ghost sm in-del" title="Remover">✕</button>
         <small class="in-next">${Number(it.day)>0?"próxima: "+fmtDate(nextOf(it)):""}</small></div>`).join("")}</div>
-      <button class="btn ghost sm" id="incAdd" style="margin-top:8px">+ Outra entrada</button>
+      <button class="btn ghost sm" id="incAdd" style="margin-top:8px">+ ${isFix?"Outra conta":"Outra entrada"}</button>
+      ${isFix && recs.length ? `<div class="sec" style="margin-top:14px"><h5 style="margin:0 0 4px;font-size:12px;color:var(--mut);text-transform:uppercase">🔁 Recorrentes que o robô achou na conta</h5>
+        <div style="font-size:12px;color:var(--mut);margin-bottom:4px">Marcadas entram sozinhas na projeção. Se você cadastrou a mesma conta acima, desmarque aqui para não contar duas vezes.</div>
+        ${recs.map(r=>`<label class="rec-row" style="cursor:pointer"><span><input type="checkbox" class="in-rec" value="${esc(r.k)}" ${ign.has(r.k)?"":"checked"}> ${esc(r.desc)}<br><small>${esc(r.cat)} · ${esc(r.origem||"")}</small></span><b>~${brl(r.media)}</b></label>`).join("")}</div>` : ""}
       <div style="font-size:12px;color:var(--mut);margin-top:10px;line-height:1.5">Dia fixo que cair em fim de semana ou feriado é antecipado para o dia útil anterior. "Dia útil nº 5" = 5º dia útil do mês, sem contar feriados.</div>
       <div class="actions"><button class="btn ghost" id="incCancel">Cancelar</button><button class="btn" id="incSave">Salvar</button></div>`;
-    const read = () => { items = [...document.querySelectorAll(".inc-row")].map((r,i)=>({id: items[i].id, name: r.querySelector(".in-name").value.trim() || "Entrada", rule: r.querySelector(".in-rule").value, day: Math.max(1, Math.min(31, parseInt(r.querySelector(".in-day").value)||1)), amount: Math.max(0, parseFloat(r.querySelector(".in-amt").value)||0)})); };
+    const read = () => { ign = new Set([...document.querySelectorAll(".in-rec")].filter(c=>!c.checked).map(c=>c.value));
+      items = [...document.querySelectorAll(".inc-row")].map((r,i)=>({id: items[i].id, name: r.querySelector(".in-name").value.trim() || (isFix?"Conta":"Entrada"), rule: r.querySelector(".in-rule").value, day: Math.max(1, Math.min(31, parseInt(r.querySelector(".in-day").value)||1)), amount: Math.max(0, parseFloat(r.querySelector(".in-amt").value)||0)})); };
     document.querySelectorAll(".in-del").forEach((b,i)=>b.onclick = () => { read(); items.splice(i,1); draw(); });
     document.querySelectorAll(".in-rule,.in-day").forEach(x=>x.onchange = () => { read(); draw(); });
     $("incAdd").onclick = () => { read(); items.push({id:uid(), name:"", rule:"fixed", day:10, amount:0}); draw(); };
     $("incCancel").onclick = closeModal;
-    $("incSave").onclick = async () => { read(); await store.save("finance", {id:"incomes", items, updatedAt: new Date().toISOString()}); closeModal(); toast("💰 Entradas salvas. C'est noté !"); };
+    $("incSave").onclick = async () => { read();
+      if (isFix){ await store.save("finance", {id:"fixed", items: items.filter(i=>i.amount>0), ignoreRec:[...ign], updatedAt: new Date().toISOString()}); closeModal(); toast("📌 Contas fixas salvas. C'est noté !"); return; }
+      await store.save("finance", {id:"incomes", items, updatedAt: new Date().toISOString()}); closeModal(); toast("💰 Entradas salvas. C'est noté !"); };
   };
   const nextOf = it => { const t = today(); const d = incDateIn(it, t.slice(0,7)); if (d > t) return d; const [y,m] = t.slice(0,7).split("-").map(Number); return incDateIn(it, m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`); };
   draw(); $("ov").classList.add("show");
@@ -962,13 +1037,14 @@ function renderCal(){
   let h = ["seg","ter","qua","qui","sex","sáb","dom"].map(w=>`<div class="wd">${w}</div>`).join("");
   for (let i=0;i<42;i++){
     const d = addDays(startD,i); if (i>=35 && d.slice(0,7)!==calMonth) break;
-    const hs = holOn(d), as = actions.filter(a=>a.date===d), dl = goals.filter(g=>g.deadline===d), bl = allBills().filter(b=>b.due===d), il = incomesBetween(d,d), rl = recurringOn(d);
+    const hs = holOn(d), as = actions.filter(a=>a.date===d), dl = goals.filter(g=>g.deadline===d), bl = allBills().filter(b=>b.due===d), il = incomesBetween(d,d), rl = recurringOn(d), fl = fixItems().length ? fixedBetween(d,d).filter(x=>x.src==="fixa") : [];
     const cls = ["cday", d.slice(0,7)!==calMonth?"out":"", d===today()?"tod":"", hs.some(x=>x.type==="feriado")?"hol":isWeekend(d)?"we":""].join(" ");
     h += `<div class="${cls}" data-calday="${d}"><div class="n">${parse(d).getDate()}</div>` +
       hs.map(x=>`<div class="ev" style="background:${x.type==="feriado"?"#a7780f":"#4b5568"}" title="${esc(x.name)}">${esc(x.name)}</div>`).join("") +
       dl.map(g=>`<div class="ev" style="background:var(--bad)" title="Prazo: ${esc(g.title)}">🚩 ${esc(g.title)}</div>`).join("") +
       il.map(x=>`<div class="ev" style="background:#1f6b45" title="${esc(x.name)}: ${brl(x.amount)}">💰 ${esc(x.name)}</div>`).join("") +
       rl.map(r=>`<div class="ev" style="background:#3a4660" title="Recorrente: ${esc(r.desc)} ~${brl(r.media)}">🔁 ${esc(r.desc)}</div>`).join("") +
+      fl.map(x=>`<div class="ev" style="background:#5a4a2a" title="${esc(x.name)}: ${brl(x.amount)}">📌 ${esc(x.name)}</div>`).join("") +
       bl.map(b=>`<div class="ev" style="background:#7a2f4a" title="Fatura ${esc(b.card)}: ${brl(b.amount)}${b.real?"":" (estimada)"}">💳 ${esc(b.inst)} ${brl(b.amount)}</div>`).join("") +
       as.map(a=>`<div class="ev" style="background:${a.done?"#2b3550":"var(--acc)"}" title="${esc(a.title)}">${a.time?a.time+" ":""}${esc(a.title)}</div>`).join("") + `</div>`;
   }
@@ -1080,13 +1156,22 @@ function renderGrid(list){
 }
 
 /* ============ EVENTOS GLOBAIS ============ */
-document.addEventListener("click", e => {
-  const t = e.target.closest("[data-check],[data-open],[data-fa],[data-fs],[data-calday],[data-actdone],[data-actedit],[data-newact],[data-plan],[data-planfor],[data-step],[data-qnum],[data-incomes]");
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-check],[data-open],[data-fa],[data-fs],[data-calday],[data-actdone],[data-actedit],[data-newact],[data-plan],[data-planfor],[data-step],[data-qnum],[data-incomes],[data-fixed],[data-cat],[data-mkgoal],[data-fold]");
   if (!t) return;
   if (t.dataset.planfor){ openActionForm({id:uid(), title:"", date:today(), time:"", goalId:t.dataset.planfor, notes:"", done:false}); return; }
   if (t.dataset.step){ const [gid, mid] = t.dataset.step.split("|"); const g = goals.find(x=>x.id===gid); const m = g && g.milestones.find(x=>x.id===mid); if (m){ m.done = true; m.doneAt = today(); save(g); toast("✓ Etapa concluída. Bravo !"); } return; }
   if (t.dataset.qnum){ const g = goals.find(x=>x.id===t.dataset.qnum), inp = $("qn-"+t.dataset.qnum); const v = inp && inp.value; if (!g || v===""||isNaN(v)) return toast("Digite o valor atual"); g.numeric.current = Number(v); g.log = [...(g.log||[]), {date:today(), value:Number(v), note:"Registro rápido"}]; save(g); toast("Valor registrado 📈"); return; }
   if (t.dataset.incomes){ openIncomes(); return; }
+  if (t.dataset.fixed){ openFlow("fixed"); return; }
+  if (t.dataset.cat){ openCat(t.dataset.cat); return; }
+  if (t.dataset.fold){ const k = t.dataset.fold, F = foldState(); F[k] = !F[k]; try { localStorage.setItem("pm-fold", JSON.stringify(F)); } catch {} applyFolds(); return; }
+  if (t.dataset.mkgoal){ const ym = n => { const d = new Date(); d.setMonth(d.getMonth()+n); return d.toLocaleDateString("pt-BR",{month:"long"}); };
+    const end = (() => { const d = new Date(); d.setMonth(d.getMonth()+3, 0); return d.toISOString().slice(0,10); })();
+    const g = {id:uid(), type:"milestones", area:"dinheiro", title:"Fechar 2 meses sem aperto", why:"Parar de depender do próximo salário para pagar a fatura; só depois disso a reserva cresce de verdade.",
+      startDate:today(), deadline:end, numeric:{start:0,target:"",current:0,unit:""}, habit:{freq:"daily",perWeek:7,checks:[]}, createdAt:new Date().toISOString(),
+      milestones:[{id:uid(), text:"Cadastrar todas as contas fixas no painel", done:false}, {id:uid(), text:`Fechar ${ym(1)} sem saldo projetado negativo`, done:false}, {id:uid(), text:`Fechar ${ym(2)} sem saldo projetado negativo`, done:false}]};
+    await save(g); toast("🎯 Meta criada. Allez !"); return; }
   if (t.dataset.calday){ openDay(t.dataset.calday); return; }
   if (t.dataset.actdone){ const a = actions.find(x=>x.id===t.dataset.actdone); if (a){ a.done = !a.done; save(a,"actions"); if (a.done) toast("✓ Ação concluída. Très bien !"); } return; }
   if (t.dataset.actedit){ const a = actions.find(x=>x.id===t.dataset.actedit); if (a) openActionForm(a); return; }
@@ -1241,7 +1326,7 @@ function drawDetail(){
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(()=>{});
 switchTab(tab);
 (async () => {
-  if (!LOCAL){ const c = loadCache(); if (c){ goals = c.goals||[]; actions = c.actions||[]; finance = c.finance||null; incomes = c.incomes||null; spending = c.spending||null; userName = c.userName||""; render(); } }
+  if (!LOCAL){ const c = loadCache(); if (c){ goals = c.goals||[]; actions = c.actions||[]; finance = c.finance||null; incomes = c.incomes||null; spending = c.spending||null; fixed = c.fixed||null; catRules = c.catRules||null; robotStatus = c.robotStatus||null; userName = c.userName||""; render(); } }
   if (LOCAL){
     $("banner").innerHTML = `<div class="banner">⚠️ <b>Modo local</b>: o Firebase ainda não foi configurado, então os dados ficam só neste navegador.</div>`;
     store = localStore();
@@ -1251,7 +1336,9 @@ switchTab(tab);
   }
   store.subscribe("goals", list => { goals = list; render(); syncAuto(); if (openId && $("ov").classList.contains("show") && !$("fTitle")) drawDetail(); });
   store.subscribe("actions", list => { actions = list; render(); if ($("ov").classList.contains("show") && $("dayPanel")) openDay($("dayPanel").dataset.day); });
-  store.subscribe("finance", list => { finance = list.find(x=>x.id==="balances") || null; incomes = list.find(x=>x.id==="incomes") || null; spending = list.find(x=>x.id==="spending") || null; render(); syncAuto(); });
+  store.subscribe("finance", list => { const by = id => list.find(x=>x.id===id) || null;
+    finance = by("balances"); incomes = by("incomes"); spending = by("spending"); fixed = by("fixed"); catRules = by("catRules"); robotStatus = by("robotStatus");
+    render(); syncAuto(); });
 })();
 </script>
 </body>
