@@ -2,11 +2,18 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Painel de Metas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b0f17">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Metas">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
 <style>
 :root{
   --bg:#0b0f17; --panel:#121826; --panel2:#182033; --line:#243049; --txt:#e6ebf5; --mut:#8b97b0;
@@ -109,7 +116,8 @@ td.r{text-align:right}
 .inline{display:flex;gap:8px}
 .inline input{flex:1}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--panel2);border:1px solid var(--line);padding:10px 18px;border-radius:10px;transition:transform .25s;z-index:99}
-.toast.show{transform:translateX(-50%) translateY(0)}
+.toast{opacity:0;pointer-events:none;transition:transform .25s,opacity .25s}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
 /* login */
 #login{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 20%,#1a2448,var(--bg) 60%);z-index:80}
 #login.show{display:flex}
@@ -153,6 +161,63 @@ td.r{text-align:right}
 .hol-item .meta{font-size:12px;color:var(--mut);margin:2px 0 8px}
 .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;background:#3b2e10;color:var(--warn);margin-left:6px}
 @media(max-width:1000px){.kpis{grid-template-columns:repeat(2,1fr)}.row,.row2,.calwrap{grid-template-columns:1fr}.cday{min-height:60px}}
+/* ---- Hoje / alertas / mobile ---- */
+.mob{display:none}
+.hello{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px}
+.hello b{display:block;font-size:20px;font-weight:800}
+.hello span{color:var(--mut);font-size:13px}
+#viewHoje .card{margin-bottom:12px}
+.ins-list{display:flex;flex-direction:column;gap:8px}
+.ins{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:10px;background:var(--panel2);border-left:3px solid var(--acc);font-size:13px;line-height:1.4}
+.ins.bad{border-color:var(--bad)} .ins.warn{border-color:var(--warn)} .ins.ok{border-color:var(--ok)}
+.ins .ic{font-size:16px;line-height:1.2}
+.ins .tx{flex:1}
+.ins button{flex:none}
+.big-habits{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.bh{background:var(--panel2);border:2px solid var(--line);border-radius:14px;padding:14px 12px;text-align:left;color:var(--txt);min-height:84px;display:flex;flex-direction:column;justify-content:space-between;transition:transform .08s}
+.bh:active{transform:scale(.97)}
+.bh b{font-size:14px;font-weight:700;line-height:1.25}
+.bh small{color:var(--mut);font-size:12px;margin-top:6px}
+.bh.on{background:#123524;border-color:var(--ok)}
+.bh.on small{color:#8fe0b4}
+.numrow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.numrow:last-child{border:0}
+.numrow .t{flex:1;min-width:0;font-size:13px}
+.numrow .t small{display:block;color:var(--mut);font-size:11px}
+.numrow input{width:110px;padding:8px 10px}
+.sheet{display:flex;flex-direction:column;gap:10px}
+.sheet .btn{padding:14px;font-size:15px;text-align:left}
+.rv-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.rv-grid div{background:var(--bg);border-radius:10px;padding:10px;text-align:center}
+.rv-grid b{display:block;font-size:20px}
+.rv-grid span{font-size:11px;color:var(--mut)}
+.rv-bar{display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0}
+.rv-bar .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rv-bar .bar{flex:1.2}
+.rv-bar .pc{width:44px;text-align:right;color:var(--mut)}
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(18,24,38,.96);backdrop-filter:blur(10px);border-top:1px solid var(--line);
+  grid-template-columns:repeat(5,1fr);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+.bnav button{background:transparent;color:var(--mut);font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0}
+.bnav button i{font-style:normal;font-size:20px;filter:grayscale(.6);opacity:.8}
+.bnav button.on{color:var(--txt)} .bnav button.on i{filter:none;opacity:1}
+.bnav .plus{background:var(--acc);color:#fff;font-size:26px;width:52px;height:52px;border-radius:50%;justify-self:center;margin-top:-18px;box-shadow:0 6px 18px rgba(109,139,255,.45);padding:0;display:block}
+@media(max-width:760px){
+  .desk{display:none!important} .mob{display:initial}
+  #viewPainel .ins-card{display:none}
+  .bnav.mob{display:grid}
+  .wrap{padding:14px 12px calc(96px + env(safe-area-inset-bottom))}
+  header{margin-bottom:12px;gap:8px} header h1{font-size:18px}
+  .user span{display:none}
+  .kpis{gap:8px} .kpi{padding:12px} .kpi .v{font-size:22px}
+  .chartbox{height:180px}
+  .grid{grid-template-columns:1fr}
+  .goal .foot .btn{padding:9px 12px}
+  .modal{padding:18px;border-radius:18px 18px 0 0;max-width:none}
+  .ov{align-items:flex-end;padding:0}
+  .ov .modal{max-height:92vh;overflow:auto}
+  .toast{bottom:calc(84px + env(safe-area-inset-bottom))}
+  input,select,textarea{font-size:16px}
+}
 @media(max-width:520px){.f2,.f3,.types{grid-template-columns:1fr}.kpi .v{font-size:24px}}
 </style>
 </head>
@@ -169,15 +234,28 @@ td.r{text-align:right}
   <header>
     <h1>🎯 Painel de <span>Metas</span></h1>
     <div class="sp"></div>
-    <nav class="tabs"><button class="on" data-tab="painel">📊 Painel</button><button data-tab="cal">📅 Calendário</button></nav>
-    <button class="btn ghost sm" id="btnExport" title="Baixar backup JSON">⬇ Backup</button>
-    <label class="btn ghost sm" title="Importar metas de um arquivo JSON" style="cursor:pointer">⬆ Importar<input type="file" id="fileImport" accept=".json,application/json" hidden></label>
-    <button class="btn" id="btnNew">+ Nova meta</button>
+    <nav class="tabs desk"><button data-tab="hoje">☀️ Hoje</button><button class="on" data-tab="painel">📊 Painel</button><button data-tab="cal">📅 Calendário</button></nav>
+    <button class="btn ghost sm desk" id="btnReview" title="Resumo dos últimos 7 dias">📋 Revisão</button>
+    <button class="btn ghost sm desk" id="btnExport" title="Baixar backup JSON">⬇ Backup</button>
+    <label class="btn ghost sm desk" title="Importar metas de um arquivo JSON" style="cursor:pointer">⬆ Importar<input type="file" id="fileImport" accept=".json,application/json" hidden></label>
+    <button class="btn desk" id="btnNew">+ Nova meta</button>
+    <button class="btn ghost sm mob" id="btnMenu" aria-label="Menu">⋯</button>
     <div class="user" id="userBox"></div>
   </header>
   <div id="banner"></div>
 
+  <div id="viewHoje" hidden>
+    <div class="hello"><div><b id="helloTitle"></b><span id="helloSub"></span></div><button class="btn ghost sm" id="btnReview2">📋 Revisão</button></div>
+    <div class="card ins-card"><h3>💡 Alertas</h3><div id="insHoje" class="ins-list"></div></div>
+    <div class="card"><h3>🔥 Hábitos de hoje</h3><div id="hojeHabits" class="big-habits"></div></div>
+    <div class="card"><h3>✅ Ações</h3><div id="hojeActs" class="today-list" style="max-height:none"></div></div>
+    <div class="card"><h3>🧩 Próximas etapas</h3><div id="hojeSteps" class="today-list" style="max-height:none"></div></div>
+    <div class="card"><h3>📈 Registro rápido</h3><div id="hojeNums"></div></div>
+    <div class="card" id="hojeBalCard"><h3>🏦 Saldo</h3><div id="hojeBal"></div></div>
+  </div>
+
   <div id="viewPainel">
+  <div class="card ins-card" style="margin-bottom:16px"><h3>💡 Alertas</h3><div id="insPainel" class="ins-list"></div></div>
   <section class="kpis" id="kpis"></section>
 
   <section class="row">
@@ -206,6 +284,14 @@ td.r{text-align:right}
     </section>
   </div>
 </div>
+
+<nav class="bnav mob" id="bnav">
+  <button data-tab="hoje" class="on"><i>☀️</i>Hoje</button>
+  <button data-tab="painel"><i>🎯</i>Metas</button>
+  <button class="plus" id="btnPlus" aria-label="Adicionar">＋</button>
+  <button data-tab="cal"><i>📅</i>Agenda</button>
+  <button id="btnReview3"><i>📋</i>Revisão</button>
+</nav>
 
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
@@ -342,7 +428,7 @@ async function firebaseStore(){
   fb = {A, F, auth, db};
   return new Promise(resolve => {
     A.onAuthStateChanged(auth, user => {
-      if (!user){ document.getElementById("login").classList.add("show"); renderUser(null); return; }
+      if (!user){ clearCache(); goals = []; actions = []; finance = null; document.getElementById("login").classList.add("show"); renderUser(null); return; }
       document.getElementById("login").classList.remove("show");
       renderUser(user);
       const col = n => F.collection(db, "users", user.uid, n);
@@ -358,6 +444,7 @@ async function firebaseStore(){
 function renderUser(u){
   const b = document.getElementById("userBox");
   if (!u){ b.innerHTML = ""; return; }
+  userName = (u.displayName||"").split(" ")[0];
   b.innerHTML = `${u.photoURL ? `<img src="${esc(u.photoURL)}" referrerpolicy="no-referrer">` : ""}<span>${esc((u.displayName||u.email||"").split(" ")[0])}</span><button class="btn ghost sm" id="btnOut">Sair</button>`;
   document.getElementById("btnOut").onclick = () => fb.A.signOut(fb.auth);
 }
@@ -370,7 +457,7 @@ document.getElementById("btnLogin").onclick = async () => {
 /* ============ ESTADO E RENDER ============ */
 let goals = [], actions = [], finance = null;
 const $ = id => document.getElementById(id);
-let tab = "painel", calMonth = today().slice(0,7);
+let tab = (()=>{ try { return localStorage.getItem("pm-tab") || (matchMedia("(max-width:760px)").matches ? "hoje" : "painel"); } catch { return "painel"; } })(), calMonth = today().slice(0,7);
 
 /* ============ FERIADOS (nacionais + SP), calculados localmente ============ */
 function easter(y){ const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1; return iso(new Date(y,mo-1,da)); }
@@ -465,6 +552,143 @@ function openDay(d){
   $("ov").classList.add("show");
 }
 
+
+/* ============ INTELIGÊNCIA: ALERTAS ============ */
+const brl = v => Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+function insights(){
+  const out = [], t = today(), hour = new Date().getHours();
+  for (const g of goals){
+    const c = calc(g);
+    if (c.status === "concluida") continue;
+    if (g.type === "numeric" && g.deadline && c.daysLeft > 0 && (c.status === "atrasada" || c.status === "atencao")){
+      const n = g.numeric, remain = Number(n.target) - Number(n.current), wk = c.daysLeft/7;
+      if (Math.sign(remain) === Math.sign(Number(n.target)-Number(n.start)) && remain !== 0)
+        out.push({p: c.status==="atrasada"?1:3, lv: c.status==="atrasada"?"bad":"warn", ic:"📉", tx:`<b>${esc(g.title)}</b>: para chegar no prazo, precisa de <b>${fmtVal(Math.abs(remain)/Math.max(wk,1/7), n.unit)}/semana</b> (${c.daysLeft} dias restantes).`, open:g.id});
+    }
+    if (g.type === "milestones" && g.deadline && c.daysLeft > 0){
+      const left = (g.milestones||[]).filter(m=>!m.done).length;
+      if (left && (c.status === "atrasada" || c.status === "atencao"))
+        out.push({p: c.status==="atrasada"?1:3, lv: c.status==="atrasada"?"bad":"warn", ic:"🧩", tx:`<b>${esc(g.title)}</b>: faltam ${left} etapa${left>1?"s":""} em ${c.daysLeft} dias, ou seja, <b>1 etapa a cada ${Math.max(1,Math.floor(c.daysLeft/left))} dias</b>.`, open:g.id});
+    }
+    if (g.deadline && c.daysLeft !== null && c.daysLeft < 0 && g.type !== "habit")
+      out.push({p:0, lv:"bad", ic:"⏰", tx:`<b>${esc(g.title)}</b> passou do prazo há ${-c.daysLeft} dias. Ajuste o prazo ou registre o progresso.`, open:g.id});
+    else if (g.deadline && c.daysLeft !== null && c.daysLeft >= 0 && c.daysLeft <= 14 && g.type !== "habit")
+      out.push({p:2, lv:"warn", ic:"🚩", tx:`<b>${esc(g.title)}</b> vence em ${c.daysLeft} dia${c.daysLeft===1?"":"s"} (${Math.round(c.p*100)}% feito).`, open:g.id});
+    if (g.type === "habit"){
+      const h = habitInfo(g);
+      if (g.habit.freq === "daily" && !h.doneToday && h.streak >= 2 && hour >= 18)
+        out.push({p:1, lv:"warn", ic:"🔥", tx:`Sequência de <b>${h.streak} dias</b> em risco: <b>${esc(g.title)}</b> ainda não foi feito hoje.`, check:g.id});
+      if (g.habit.freq === "weekly"){
+        const ws = weekStart(t); let n = 0; for (let i=0;i<7;i++) if ((g.habit.checks||[]).includes(addDays(ws,i))) n++;
+        const need = g.habit.perWeek - n, daysLeft = 7 - diffDays(ws, t);
+        if (need > 0 && need >= daysLeft - 1)
+          out.push({p:2, lv: need>daysLeft?"bad":"warn", ic:"📆", tx:`<b>${esc(g.title)}</b>: faltam ${need} na semana e restam ${daysLeft} dia${daysLeft>1?"s":""} (contando hoje).`, check: need<=daysLeft && !(g.habit.checks||[]).includes(t) ? g.id : null});
+      }
+    } else {
+      const next = actions.some(a => a.goalId === g.id && !a.done && a.date >= t);
+      if (!next) out.push({p:4, lv:"", ic:"➡️", tx:`<b>${esc(g.title)}</b> está sem próxima ação agendada.`, plan:g.id});
+    }
+  }
+  const overdue = actions.filter(a => !a.done && a.date < t);
+  if (overdue.length) out.push({p:1, lv:"bad", ic:"⌛", tx:`${overdue.length} ação${overdue.length>1?"ões":""} atrasada${overdue.length>1?"s":""}: ${overdue.slice(0,2).map(a=>esc(a.title)).join(", ")}${overdue.length>2?"…":""}.`, tab:"hoje"});
+  if (finance && finance.accounts) for (const a of finance.accounts.filter(x=>x.type==="CREDIT" && x.dueDate)){
+    const d = diffDays(t, a.dueDate);
+    if (d >= 0 && d <= 5 && Number(a.balance) > 0) out.push({p:1, lv:"warn", ic:"💳", tx:`Fatura <b>${esc(a.institution)} ${esc(a.name)}</b> vence ${d===0?"hoje":`em ${d} dia${d>1?"s":""}`}: ${brl(a.balance)}.`});
+  }
+  const b = holidayBlocks(t, 1)[0];
+  if (b && !b.onWeekend){ const d = diffDays(t, b.start); if (d > 0 && d <= 30) out.push({p:5, lv:"ok", ic:"🏖️", tx:`${esc(b.names[0])} em ${d} dias: ${b.days} dias de folga${b.bridge?` (${b.bridge.total} com emenda)`:""}. Que tal reservar um bloco de foco?`, planDay:`${b.start}|${b.names[0]}`}); }
+  return out.sort((a,b)=>a.p-b.p);
+}
+function renderInsights(el, max){
+  const L = insights();
+  if (!L.length){ el.innerHTML = `<div class="ins ok"><span class="ic">✨</span><span class="tx">Tudo em dia. Bom trabalho! Continue no ritmo.</span></div>`; return; }
+  el.innerHTML = L.slice(0, max).map(x => `<div class="ins ${x.lv}"><span class="ic">${x.ic}</span><span class="tx">${x.tx}</span>${
+    x.check?`<button class="btn sm" data-check="${x.check}">✓ Feito</button>`:
+    x.plan?`<button class="btn ghost sm" data-planfor="${x.plan}">Agendar</button>`:
+    x.planDay?`<button class="btn ghost sm" data-plan="${esc(x.planDay)}">Planejar</button>`:
+    x.open?`<button class="btn ghost sm" data-open="${x.open}">Ver</button>`:""}</div>`).join("") +
+    (L.length > max ? `<div style="font-size:12px;color:var(--mut);text-align:center">+ ${L.length-max} alerta${L.length-max>1?"s":""}</div>` : "");
+}
+
+/* ============ TELA HOJE ============ */
+function renderHoje(){
+  const t = today(), h = new Date().getHours();
+  $("helloTitle").textContent = (h<12?"Bom dia":h<18?"Boa tarde":"Boa noite") + (userName?`, ${userName}`:"") + "!";
+  const dstr = parse(t).toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"});
+  $("helloSub").textContent = dstr[0].toUpperCase() + dstr.slice(1) + (holOn(t).length?` · 🏖️ ${holOn(t)[0].name}`:"");
+  renderInsights($("insHoje"), 4);
+  const hs = goals.filter(g=>g.type==="habit" && calc(g).status!=="concluida");
+  $("hojeHabits").innerHTML = hs.length ? hs.map(g => { const x = habitInfo(g);
+    const sub = g.habit.freq==="weekly" ? (()=>{ const ws=weekStart(t); let n=0; for(let i=0;i<7;i++) if((g.habit.checks||[]).includes(addDays(ws,i))) n++; return `${n}/${g.habit.perWeek} na semana`; })() : `🔥 ${x.streak} ${x.unit}`;
+    return `<button class="bh ${x.doneToday?"on":""}" data-check="${g.id}"><b>${AREAS[g.area]?.e||""} ${esc(g.title)}</b><small>${x.doneToday?"✓ Feito hoje · ":""}${sub}</small></button>`; }).join("")
+    : `<div style="color:var(--mut);font-size:13px">Nenhum hábito. Crie uma meta do tipo Hábito.</div>`;
+  const as = actions.filter(a => (a.date===t) || (a.date<t && !a.done)).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));
+  $("hojeActs").innerHTML = (as.length ? as.map(a=>actRow(a, a.date!==t)).join("") : `<div style="color:var(--mut);font-size:13px">Nada para hoje.</div>`) + `<div style="margin-top:6px"><button class="btn ghost sm" data-newact="1">+ Agendar ação</button></div>`;
+  const steps = goals.filter(g=>g.type==="milestones").map(g=>({g, m:(g.milestones||[]).find(m=>!m.done)})).filter(x=>x.m);
+  $("hojeSteps").innerHTML = steps.length ? steps.map(({g,m}) => `<div class="act"><button class="chk" data-step="${g.id}|${m.id}">✓</button><span class="t" data-open="${g.id}" style="cursor:pointer">${esc(m.text)}<small>${AREAS[g.area]?.e||""} ${esc(g.title)} · ${(g.milestones||[]).filter(x=>x.done).length}/${g.milestones.length}</small></span></div>`).join("") : `<div style="color:var(--mut);font-size:13px">Sem etapas pendentes.</div>`;
+  const nums = goals.filter(g=>g.type==="numeric" && calc(g).status!=="concluida");
+  $("hojeNums").innerHTML = nums.length ? nums.map(g => `<div class="numrow"><span class="t">${esc(g.title)}<small>${esc(calc(g).label)}</small></span><input type="number" inputmode="decimal" step="any" placeholder="novo valor" id="qn-${g.id}"><button class="btn sm" data-qnum="${g.id}">Salvar</button></div>`).join("") : `<div style="color:var(--mut);font-size:13px">Sem metas numéricas.</div>`;
+  if (finance && finance.accounts){ $("hojeBalCard").hidden = false; const tot = finance.accounts.filter(a=>a.type!=="CREDIT").reduce((s,a)=>s+Number(a.balance||0),0), cr = finance.accounts.filter(a=>a.type==="CREDIT").reduce((s,a)=>s+Number(a.balance||0),0);
+    $("hojeBal").innerHTML = `<div class="bal-row"><span>Em conta</span><b style="color:var(--ok)">${brl(tot)}</b></div><div class="bal-row"><span>Faturas de cartão</span><b style="color:var(--bad)">${brl(cr)}</b></div><div style="font-size:11px;color:var(--mut);margin-top:4px">Detalhes na aba Metas</div>`; }
+  else $("hojeBalCard").hidden = true;
+}
+
+/* ============ REVISÃO SEMANAL ============ */
+function openReview(){
+  const t = today(), from = addDays(t, -6);
+  const inWk = d => d && d >= from && d <= t;
+  const hs = goals.filter(g=>g.type==="habit");
+  const hab = hs.map(g => { const n = (g.habit.checks||[]).filter(inWk).length, exp = g.habit.freq==="daily" ? Math.min(7, diffDays(g.startDate>from?g.startDate:from, t)+1) : g.habit.perWeek; return {g, n, exp, p: exp ? Math.min(1, n/exp) : 0}; });
+  const steps = goals.flatMap(g => (g.milestones||[]).filter(m=>m.done && inWk(m.doneAt)).map(m=>({g,m})));
+  const nums = goals.filter(g=>g.type==="numeric").map(g => { const L = (g.log||[]).slice().sort((a,b)=>a.date.localeCompare(b.date)); const before = L.filter(l=>l.date<from).pop() || L[0]; const last = L.filter(l=>inWk(l.date)).pop(); return last && before && last !== before ? {g, d: Number(last.value)-Number(before.value)} : null; }).filter(Boolean);
+  const actW = actions.filter(a=>inWk(a.date)), actDone = actW.filter(a=>a.done).length;
+  const nextW = actions.filter(a=>!a.done && a.date > t && a.date <= addDays(t,7)).sort((a,b)=>a.date.localeCompare(b.date));
+  const habAvg = hab.length ? Math.round(hab.reduce((s,x)=>s+x.p,0)/hab.length*100) : 0;
+  $("modal").innerHTML = `<h2>📋 Revisão da semana</h2><div class="sub">${fmtDate(from)} → ${fmtDate(t)}</div>
+    <div class="rv-grid"><div><b>${habAvg}%</b><span>adesão aos hábitos</span></div><div><b>${steps.length}</b><span>etapas concluídas</span></div><div><b>${actDone}/${actW.length}</b><span>ações feitas</span></div></div>
+    ${hab.length?`<div class="sec"><h5>Hábitos</h5>${hab.map(x=>`<div class="rv-bar"><span class="nm">${esc(x.g.title)}</span><div class="bar" style="--c:${(AREAS[x.g.area]||AREAS.pessoal).c}"><i style="width:${x.p*100}%"></i></div><span class="pc">${x.n}/${x.exp}</span></div>`).join("")}</div>`:""}
+    ${nums.length?`<div class="sec"><h5>Evolução numérica</h5>${nums.map(x=>`<div class="rv-bar"><span class="nm">${esc(x.g.title)}</span><b style="color:${x.d>=0?"var(--ok)":"var(--bad)"}">${x.d>=0?"+":""}${fmtVal(x.d, x.g.numeric.unit)}</b></div>`).join("")}</div>`:""}
+    ${steps.length?`<div class="sec"><h5>Etapas concluídas</h5>${steps.map(x=>`<div class="rv-bar">✓ ${esc(x.m.text)} <span style="color:var(--mut)">· ${esc(x.g.title)}</span></div>`).join("")}</div>`:""}
+    <div class="sec"><h5>Próximos 7 dias</h5>${nextW.length?nextW.map(a=>`<div class="rv-bar">${fmtDay(a.date)} · ${esc(a.title)}</div>`).join(""):`<div style="color:var(--mut);font-size:13px">Nenhuma ação agendada. Escolha 1 a 3 passos para a próxima semana.</div>`}</div>
+    <div class="sec"><h5>Para refletir</h5><div style="font-size:13px;line-height:1.6;color:var(--mut)">• O que funcionou esta semana?<br>• O que travou, e qual é o menor próximo passo?<br>• Qual meta merece seu melhor horário na próxima semana?</div></div>
+    <div class="actions"><button class="btn ghost" id="rvClose">Fechar</button><button class="btn" data-newact="1">+ Agendar ação</button></div>`;
+  $("rvClose").onclick = closeModal;
+  $("ov").classList.add("show");
+}
+
+/* ============ MENU / ADICIONAR (celular) ============ */
+function openPlus(){
+  $("modal").innerHTML = `<h2>Adicionar</h2><div class="sheet" style="margin-top:12px">
+    <button class="btn ghost" id="pAct">📅 Agendar ação</button><button class="btn ghost" id="pGoal">🎯 Nova meta</button>
+    <button class="btn ghost" id="pCancel" style="text-align:center">Cancelar</button></div>`;
+  $("pAct").onclick = () => openActionForm(null);
+  $("pGoal").onclick = () => { closeModal(); openForm(null); };
+  $("pCancel").onclick = closeModal;
+  $("ov").classList.add("show");
+}
+function openMenu(){
+  $("modal").innerHTML = `<h2>Menu</h2><div class="sheet" style="margin-top:12px">
+    <button class="btn ghost" id="mExp">⬇ Baixar backup</button>
+    <label class="btn ghost" style="cursor:pointer">⬆ Importar backup<input type="file" accept=".json,application/json" hidden id="mImp"></label>
+    ${fb.auth?`<button class="btn ghost" id="mOut">🚪 Sair da conta</button>`:""}
+    <button class="btn ghost" id="mClose" style="text-align:center">Fechar</button></div>`;
+  $("mExp").onclick = () => $("btnExport").click();
+  $("mImp").onchange = e => { const dt = new DataTransfer(); dt.items.add(e.target.files[0]); $("fileImport").files = dt.files; $("fileImport").dispatchEvent(new Event("change")); closeModal(); };
+  if (fb.auth) $("mOut").onclick = () => { closeModal(); fb.A.signOut(fb.auth); };
+  $("mClose").onclick = closeModal;
+  $("ov").classList.add("show");
+}
+$("btnPlus").onclick = openPlus;
+$("btnMenu").onclick = openMenu;
+[$("btnReview"), $("btnReview2"), $("btnReview3")].forEach(b => b.onclick = openReview);
+
+/* ============ CACHE LOCAL (abre instantâneo) ============ */
+const CACHE_KEY = "pm-cache-v1";
+let userName = "";
+function saveCache(){ if (LOCAL) return; try { localStorage.setItem(CACHE_KEY, JSON.stringify({goals, actions, finance, userName, at: Date.now()})); } catch {} }
+function loadCache(){ try { return JSON.parse(localStorage.getItem(CACHE_KEY)); } catch { return null; } }
+function clearCache(){ try { localStorage.removeItem(CACHE_KEY); } catch {} }
+
 function renderNext7(){
   const t = today(), end = addDays(t,7);
   const items = [
@@ -515,7 +739,7 @@ function renderCal(){
   }).join("");
 }
 
-function switchTab(t){ tab = t; document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("on", b.dataset.tab===t)); $("viewPainel").hidden = t!=="painel"; $("viewCal").hidden = t!=="cal"; render(); }
+function switchTab(t){ tab = t; document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("on", b.dataset.tab===t)); $("viewHoje").hidden = t!=="hoje"; $("viewPainel").hidden = t!=="painel"; $("viewCal").hidden = t!=="cal"; try{ localStorage.setItem("pm-tab", t); }catch{} window.scrollTo(0,0); render(); }
 document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 $("calPrev").onclick = () => { const d = parse(calMonth+"-01"); d.setMonth(d.getMonth()-1); calMonth = iso(d).slice(0,7); renderCal(); };
 $("calNext").onclick = () => { const d = parse(calMonth+"-01"); d.setMonth(d.getMonth()+1); calMonth = iso(d).slice(0,7); renderCal(); };
@@ -584,8 +808,10 @@ function render(){
     `<input id="q" placeholder="Buscar meta..." value="${esc(filt.q)}">`;
   $("q").oninput = e => { filt.q = e.target.value; renderGrid(list); };
   renderGrid(list);
-  renderNext7(); renderBalance();
+  renderNext7(); renderBalance(); renderInsights($("insPainel"), 6);
   if (tab === "cal") renderCal();
+  if (tab === "hoje") renderHoje();
+  saveCache();
 }
 
 function renderGrid(list){
@@ -610,8 +836,11 @@ function renderGrid(list){
 
 /* ============ EVENTOS GLOBAIS ============ */
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-check],[data-open],[data-fa],[data-fs],[data-calday],[data-actdone],[data-actedit],[data-newact],[data-plan]");
+  const t = e.target.closest("[data-check],[data-open],[data-fa],[data-fs],[data-calday],[data-actdone],[data-actedit],[data-newact],[data-plan],[data-planfor],[data-step],[data-qnum]");
   if (!t) return;
+  if (t.dataset.planfor){ openActionForm({id:uid(), title:"", date:today(), time:"", goalId:t.dataset.planfor, notes:"", done:false}); return; }
+  if (t.dataset.step){ const [gid, mid] = t.dataset.step.split("|"); const g = goals.find(x=>x.id===gid); const m = g && g.milestones.find(x=>x.id===mid); if (m){ m.done = true; m.doneAt = today(); save(g); toast("✓ Etapa concluída. Bravo !"); } return; }
+  if (t.dataset.qnum){ const g = goals.find(x=>x.id===t.dataset.qnum), inp = $("qn-"+t.dataset.qnum); const v = inp && inp.value; if (!g || v===""||isNaN(v)) return toast("Digite o valor atual"); g.numeric.current = Number(v); g.log = [...(g.log||[]), {date:today(), value:Number(v), note:"Registro rápido"}]; save(g); toast("Valor registrado 📈"); return; }
   if (t.dataset.calday){ openDay(t.dataset.calday); return; }
   if (t.dataset.actdone){ const a = actions.find(x=>x.id===t.dataset.actdone); if (a){ a.done = !a.done; save(a,"actions"); if (a.done) toast("✓ Ação concluída. Très bien !"); } return; }
   if (t.dataset.actedit){ const a = actions.find(x=>x.id===t.dataset.actedit); if (a) openActionForm(a); return; }
@@ -759,7 +988,10 @@ function drawDetail(){
 }
 
 /* ============ INICIAR ============ */
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(()=>{});
+switchTab(tab);
 (async () => {
+  if (!LOCAL){ const c = loadCache(); if (c){ goals = c.goals||[]; actions = c.actions||[]; finance = c.finance||null; userName = c.userName||""; render(); } }
   if (LOCAL){
     $("banner").innerHTML = `<div class="banner">⚠️ <b>Modo local</b>: o Firebase ainda não foi configurado, então os dados ficam só neste navegador.</div>`;
     store = localStore();
