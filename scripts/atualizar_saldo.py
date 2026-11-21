@@ -16,6 +16,7 @@ Secrets necessários:
 """
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -99,7 +100,9 @@ def main():
     firebase_admin.initialize_app(cred)
     db = firestore.client()
     now = datetime.now(timezone.utc)
-    col = db.collection("users").document(env("FIREBASE_UID")).collection("finance")
+    # o UID do Firebase só tem letras/números: remove espaços, pontos ou aspas colados por engano
+    uid = re.sub(r"[^A-Za-z0-9]", "", env("FIREBASE_UID"))
+    col = db.collection("users").document(uid).collection("finance")
     payload = {"updatedAt": now.isoformat(), "accounts": accounts}
     col.document("balances").set(payload)
     # histórico diário (um documento por dia) para gráficos futuros
