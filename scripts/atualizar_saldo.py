@@ -110,6 +110,11 @@ def listar_transacoes(acc_id, headers, desde):
     if os.environ.get("ROBO_DEBUG"):
         ds = sorted(str(t.get("date"))[:10] for t in out)
         print(f"  [debug] conta …{acc_id[-4:]}: {len(out)} transações, páginas={_+1}, de {ds[0] if ds else '-'} até {ds[-1] if ds else '-'}")
+        from collections import Counter
+        tipos = Counter((t.get("type"), "+" if float(t.get("amount") or 0) > 0 else "-", str(t.get("date"))[:7] >= date.today().isoformat()[:7]) for t in out)
+        print(f"  [debug]   tipos (type, sinal, mês atual/futuro): {dict(tipos)}")
+        rec = sorted(out, key=lambda t: str(t.get("date")))[-3:]
+        print(f"  [debug]   status/data das 3 últimas: {[(str(t.get('date'))[:10], t.get('type'), t.get('status')) for t in rec]}")
     vistos, unicos = set(), []
     for t in out:                                    # evita contar a mesma transação duas vezes
         k = t.get("id") or (t.get("date"), t.get("amount"), t.get("description"))
