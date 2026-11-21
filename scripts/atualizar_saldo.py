@@ -107,6 +107,9 @@ def listar_transacoes(acc_id, headers, desde):
             url, params = f"{API}/v2/transactions" + (nxt if nxt.startswith("?") else "?" + nxt), None
         else:                                        # só o cursor
             url, params = f"{API}/v2/transactions", {"accountId": acc_id, "dateFrom": desde, "after": nxt}
+    if os.environ.get("ROBO_DEBUG"):
+        ds = sorted(str(t.get("date"))[:10] for t in out)
+        print(f"  [debug] conta …{acc_id[-4:]}: {len(out)} transações, páginas={_+1}, de {ds[0] if ds else '-'} até {ds[-1] if ds else '-'}")
     vistos, unicos = set(), []
     for t in out:                                    # evita contar a mesma transação duas vezes
         k = t.get("id") or (t.get("date"), t.get("amount"), t.get("description"))

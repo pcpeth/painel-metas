@@ -34,5 +34,6 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          ROBO_DEBUG: '1'
           RESUMO_FORCAR: ${{ inputs.enviar_email && '1' || '' }}
         run: python scripts/atualizar_saldo.py
