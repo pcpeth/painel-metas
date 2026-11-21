@@ -1103,7 +1103,7 @@ async function syncAuto(){
 }
 
 /* ============ ENTRADAS PREVISTAS (salário) ============ */
-const INC_DEFAULT = [{id:"adiant", name:"Adiantamento", rule:"fixed", day:15, amount:0}, {id:"salario", name:"Salário", rule:"fixed", day:30, amount:0}];
+const INC_DEFAULT = [{id:"salario", name:"Salário", rule:"fixed", day:30, amount:0}];
 function incItems(){ return (incomes && incomes.items) || []; }
 function incDateIn(it, ym){
   const [y,m] = ym.split("-").map(Number), last = new Date(y, m, 0).getDate(), pad = n => String(n).padStart(2,"0");
@@ -1145,8 +1145,16 @@ function liquidoHolerite(b, P){
   const outros = Number(P.outros)||0;
   return {inss, pens, disp, margem, cons, outros, net: b - inss - pens - outros - cons, falta: Math.max(0, (Number(P.consig)||0) - margem)};
 }
+function incExtras(){ return (incomes && incomes.extras) || []; }
+/* 13º: 1ª parcela = 50% do bruto sem INSS; 2ª = resto − INSS do 13º (IR zerado até R$ 5 mil). Pensão opcional (depende da decisão judicial). */
+function decimoTerceiro(bruto, pensaoPct, comPensao){
+  const i = inss2026(bruto), p = comPensao ? (Number(pensaoPct)||0)/100 : 0;
+  const p1 = bruto/2 * (1 - p), totalPens = p * (bruto - i), p2 = bruto/2 - i - (totalPens - bruto/2*p);
+  return {p1: Math.round(p1*100)/100, p2: Math.round(p2*100)/100};
+}
 function incomesBetween(from, to, sim=false){
-  const out = []; let ym = from.slice(0,7); const rf = raiseFrom(sim);
+  const out = incExtras().filter(x => Number(x.amount) > 0 && x.date >= from && x.date <= to).map(x => ({date:x.date, name:x.name, amount:Number(x.amount), extra:true}));
+  let ym = from.slice(0,7); const rf = raiseFrom(sim);
   while (ym <= to.slice(0,7)){
     for (const it of incItems()) if (Number(it.amount) > 0){ const d = incDateIn(it, ym); if (d >= from && d <= to) out.push({date:d, name:it.name + (rf && d >= rf ? " (com aumento)" : ""), amount:Math.round(Number(it.amount) * monthFactor(d, rf) * 100)/100}); }
     const [y,m] = ym.split("-").map(Number); ym = m===12 ? `${y+1}-01` : `${y}-${String(m+1).padStart(2,"0")}`;
@@ -1198,6 +1206,7 @@ function openFlow(kind){
   let items = JSON.parse(JSON.stringify(isFix ? fixItems() : (incItems().length ? incItems() : INC_DEFAULT)));
   if (isFix && !items.length) items.push({id:uid(), name:"", rule:"fixed", day:10, amount:0});
   let ign = new Set((fixed && fixed.ignoreRec) || []);
+  let extras = JSON.parse(JSON.stringify(incExtras()));
   const recs = ((spending && spending.recurring) || []).filter(r => r.tipo === "conta");
   const draw = () => {
     $("modal").innerHTML = (isFix ? `<h2>📌 Contas fixas</h2><div class="sub">Aluguel, luz, internet, empréstimo, boleto… tudo que sai da conta e não passa pelo cartão. Entram no "pode gastar hoje".</div>`
@@ -1210,20 +1219,39 @@ function openFlow(kind){
         <button class="btn ghost sm in-del" title="Remover">✕</button>
         <small class="in-next">${Number(it.day)>0?"próxima: "+fmtDate(nextOf(it)):""}</small></div>`).join("")}</div>
       <button class="btn ghost sm" id="incAdd" style="margin-top:8px">+ ${isFix?"Outra conta":"Outra entrada"}</button>
+      ${!isFix ? `<div class="sec" style="margin-top:14px"><h5 style="margin:0 0 4px;font-size:12px;color:var(--mut);text-transform:uppercase">⭐ Entradas pontuais (13º, férias, PLR…)</h5>
+        <div id="exList">${extras.map(x=>`<div class="inc-row" style="grid-template-columns:1.3fr 1.1fr 1fr auto"><input class="ex-name" value="${esc(x.name)}" placeholder="Nome"><input class="ex-date" type="date" value="${x.date||""}"><input class="ex-amt" type="number" step="0.01" inputmode="decimal" placeholder="R$ líquido" value="${x.amount||""}"><button class="btn ghost sm ex-del">✕</button></div>`).join("")}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button class="btn ghost sm" id="exAdd">+ Entrada pontual</button>${hasPayroll()?`<button class="btn ghost sm" id="ex13">⭐ Calcular 13º</button>`:""}</div>
+        <div id="ex13box"></div></div>` : ""}
       ${isFix && recs.length ? `<div class="sec" style="margin-top:14px"><h5 style="margin:0 0 4px;font-size:12px;color:var(--mut);text-transform:uppercase">🔁 Recorrentes que o robô achou na conta</h5>
         <div style="font-size:12px;color:var(--mut);margin-bottom:4px">Marcadas entram sozinhas na projeção. Se você cadastrou a mesma conta acima, desmarque aqui para não contar duas vezes.</div>
         ${recs.map(r=>`<label class="rec-row" style="cursor:pointer"><span><input type="checkbox" class="in-rec" value="${esc(r.k)}" ${ign.has(r.k)?"":"checked"}> ${esc(r.desc)}<br><small>${esc(r.cat)} · ${esc(r.origem||"")}</small></span><b>~${brl(r.media)}</b></label>`).join("")}</div>` : ""}
       <div style="font-size:12px;color:var(--mut);margin-top:10px;line-height:1.5">Dia fixo que cair em fim de semana ou feriado é antecipado para o dia útil anterior. "Dia útil nº 5" = 5º dia útil do mês, sem contar feriados.</div>
       <div class="actions"><button class="btn ghost" id="incCancel">Cancelar</button><button class="btn" id="incSave">Salvar</button></div>`;
     const read = () => { ign = new Set([...document.querySelectorAll(".in-rec")].filter(c=>!c.checked).map(c=>c.value));
-      items = [...document.querySelectorAll(".inc-row")].map((r,i)=>({id: items[i].id, name: r.querySelector(".in-name").value.trim() || (isFix?"Conta":"Entrada"), rule: r.querySelector(".in-rule").value, day: Math.max(1, Math.min(31, parseInt(r.querySelector(".in-day").value)||1)), amount: Math.max(0, parseFloat(r.querySelector(".in-amt").value)||0)})); };
+      items = [...document.querySelectorAll("#incList .inc-row")].map((r,i)=>({id: items[i].id, name: r.querySelector(".in-name").value.trim() || (isFix?"Conta":"Entrada"), rule: r.querySelector(".in-rule").value, day: Math.max(1, Math.min(31, parseInt(r.querySelector(".in-day").value)||1)), amount: Math.max(0, parseFloat(r.querySelector(".in-amt").value)||0)})); };
     document.querySelectorAll(".in-del").forEach((b,i)=>b.onclick = () => { read(); items.splice(i,1); draw(); });
+    const readEx = () => { if (!$("exList")) return; extras = [...document.querySelectorAll("#exList .inc-row")].map(r => ({name: r.querySelector(".ex-name").value.trim() || "Entrada", date: r.querySelector(".ex-date").value, amount: parseFloat(r.querySelector(".ex-amt").value)||0})); };
+    const oldRead = read;
+    document.querySelectorAll(".ex-del").forEach((b,i)=>b.onclick = () => { oldRead(); readEx(); extras.splice(i,1); draw(); });
+    if ($("exAdd")) $("exAdd").onclick = () => { oldRead(); readEx(); extras.push({name:"", date:"", amount:""}); draw(); };
+    if ($("ex13")) $("ex13").onclick = () => { const P = payrollCfg(), y = today().slice(0,4);
+      const show = cp => { const D = decimoTerceiro(Number(P.bruto), P.pensao, cp);
+        $("ex13box").innerHTML = `<div class="commit" style="margin-top:8px">Bruto ${brl(Number(P.bruto))} → <b>1ª parcela ${brl(D.p1)}</b> (até 30/11) · <b>2ª parcela ${brl(D.p2)}</b> (até 18/12)<br>
+          <label style="display:flex;gap:6px;align-items:center;margin-top:4px"><input type="checkbox" id="ex13p" ${cp?"checked":""}> Pensão de ${P.pensao||0}% também é descontada do 13º</label>
+          <span style="color:var(--mut);font-size:12px">Consignado normalmente não desconta do 13º. Confira no holerite do 13º e ajuste se vier diferente.</span>
+          <div style="margin-top:6px"><button class="btn sm" id="ex13add">Adicionar as 2 parcelas</button></div></div>`;
+        $("ex13p").onchange = e => show(e.target.checked);
+        $("ex13add").onclick = () => { oldRead(); readEx(); extras = extras.filter(x => !/^13º/.test(x.name));
+          extras.push({name:"13º — 1ª parcela", date:`${y}-11-30`, amount:D.p1}, {name:"13º — 2ª parcela", date:`${y}-12-18`, amount:D.p2}); draw(); }; };
+      show(true); };
     document.querySelectorAll(".in-rule,.in-day").forEach(x=>x.onchange = () => { read(); draw(); });
     $("incAdd").onclick = () => { read(); items.push({id:uid(), name:"", rule:"fixed", day:10, amount:0}); draw(); };
     $("incCancel").onclick = closeModal;
-    $("incSave").onclick = async () => { read();
+    $("incSave").onclick = async () => { read(); if (!isFix) readEx();
       if (isFix){ await store.save("finance", {id:"fixed", items: items.filter(i=>i.amount>0), ignoreRec:[...ign], updatedAt: new Date().toISOString()}); closeModal(); toast("📌 Contas fixas salvas. C'est noté !"); return; }
-      await store.save("finance", {id:"incomes", items, updatedAt: new Date().toISOString()}); closeModal(); toast("💰 Entradas salvas. C'est noté !"); };
+      readEx();
+      await store.save("finance", {...(incomes||{}), id:"incomes", items, extras: extras.filter(x => x.date && x.amount > 0), updatedAt: new Date().toISOString()}); closeModal(); toast("💰 Entradas salvas. C'est noté !"); };
   };
   const nextOf = it => { const t = today(); const d = incDateIn(it, t.slice(0,7)); if (d > t) return d; const [y,m] = t.slice(0,7).split("-").map(Number); return incDateIn(it, m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`); };
   draw(); $("ov").classList.add("show");
