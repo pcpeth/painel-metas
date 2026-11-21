@@ -48,6 +48,21 @@ def nome_banco(texto):
     return (texto or "").split(" - ")[0].replace(" S.A.", "").replace(" S/A", "").strip()
 
 
+def nome_cartao(nome, bandeira, banco):
+    """'PIC PAY MASTERCARD GOLD' + PicPay -> 'Mastercard Gold'; 'platinum' + MASTERCARD -> 'Mastercard Platinum'."""
+    palavras = (nome or "").title().split()
+    # tira o nome do banco do começo (ex.: 'Pic Pay', 'Santander')
+    alvo = (banco or "").lower().replace(" ", "")
+    for n in range(len(palavras), 0, -1):
+        if alvo and "".join(palavras[:n]).lower() == alvo:
+            palavras = palavras[n:]
+            break
+    band = (bandeira or "").title()
+    if band and band.lower() not in [p.lower() for p in palavras]:
+        palavras = [band] + palavras
+    return " ".join(palavras) or "Cartão"
+
+
 def main():
     # 1) Autentica na Pluggy
     r = requests.post(f"{API}/auth", json={"clientId": env("PLUGGY_CLIENT_ID"),
@@ -73,7 +88,7 @@ def main():
             for acc in contas:
                 credit = acc.get("creditData") or {}
                 if acc.get("type") == "CREDIT":
-                    nome = " ".join(x for x in [credit.get("brand", "").title(), (acc.get("name") or "").title()] if x)
+                    nome = nome_cartao(acc.get("name"), credit.get("brand"), institution)
                 else:
                     nome = "Conta corrente" if acc.get("subtype") == "CHECKING_ACCOUNT" else ("Poupança" if acc.get("subtype") == "SAVINGS_ACCOUNT" else (acc.get("name") or "Conta"))
                 accounts.append({
