@@ -153,7 +153,7 @@ def faturas_cartao(acc, headers, hoje, meses=6):
     bill_por_mes = {(b["due"].year, b["due"].month): b for b in bills}
 
     txs = listar_transacoes(acc["id"], headers, (hoje - timedelta(days=200)).isoformat())
-    postado, compras = defaultdict(float), {}
+    postado, compras, novos = defaultdict(float), {}, defaultdict(float)
     for t in txs:
         dia, valor = _data(t.get("date")), float(t.get("amount") or 0)
         if not dia or not valor:
@@ -164,6 +164,8 @@ def faturas_cartao(acc, headers, hoje, meses=6):
             continue                      # pagamento de fatura anterior não abate a fatura atual
         postado[(venc.year, venc.month)] += valor
         n, tot = int(meta.get("installmentNumber") or 0), int(meta.get("totalInstallments") or 0)
+        if valor > 0 and tot <= 1:
+            novos[(venc.year, venc.month)] += valor   # compra à vista (não parcelada)
         if valor > 0 and tot > 1 and 0 < n < tot:
             k = (_chave_parcela(t.get("description")), tot, round(valor, 2))
             if k not in compras or n > compras[k][0]:
@@ -177,7 +179,11 @@ def faturas_cartao(acc, headers, hoje, meses=6):
     # primeira fatura a mostrar: a fechada ainda não vencida, ou a aberta
     abertas = sorted(b["due"] for b in bills if b["due"] >= hoje)
     inicio = abertas[0] if abertas else vencimento_de(hoje, fecha, vence)
-    previsao = []
+    # média de compras à vista nas 3 últimas faturas já vencidas -> estimativa de gastos novos
+    passados = [add_months(date(inicio.year, inicio.month, 1), -i) for i in (1, 2, 3)]
+    vals = [novos[(m.year, m.month)] for m in passados if (m.year, m.month) in novos]
+    media_novos = sum(vals) / len(vals) if vals else 0.0
+    previsao, primeira_est = [], True
     for i in range(meses):
         m = add_months(date(inicio.year, inicio.month, 1), i)
         chave = (m.year, m.month)
@@ -187,9 +193,101 @@ def faturas_cartao(acc, headers, hoje, meses=6):
             previsao.append({"due": b["due"].isoformat(), "amount": round(b["total"], 2), "real": True, "min": b["min"], "parcelas": 0})
         else:
             p, f = postado.get(chave, 0.0), futuro.get(chave, 0.0)
-            previsao.append({"due": dia.isoformat(), "amount": round(max(p + f, 0), 2), "real": False, "parcelas": round(f, 2)})
+            est = max(media_novos - novos.get(chave, 0.0), 0.0) if primeira_est else media_novos
+            primeira_est = False
+            previsao.append({"due": dia.isoformat(), "amount": round(max(p + f, 0), 2), "real": False, "parcelas": round(f, 2), "novos": round(est, 2)})
     historico = [{"due": b["due"].isoformat(), "amount": round(b["total"], 2)} for b in sorted(bills, key=lambda x: x["due"]) if b["due"] < hoje][-4:]
-    return previsao, historico
+    return previsao, historico, txs, round(media_novos, 2)
+
+
+# ---------------------------------------------------------------- gastos por categoria
+CAT_EXATA = {"gas": "Casa e contas"}
+CAT_REGRAS = [  # (trecho da categoria da Pluggy, grupo no painel) — a primeira que casar vence
+    ("same person", None), ("credit card payment", None), ("investment", None), ("fixed income", None), ("mutual funds", None),
+    ("variable income", None), ("margin", None), ("proceeds", None), ("pension", None), ("income", None), ("salary", None),
+    ("retirement", None), ("entrepreneurial", None), ("government aid", None), ("blocked balances", None),
+    ("groceries", "Mercado"), ("eating out", "Comer fora e delivery"), ("food delivery", "Comer fora e delivery"), ("food and drinks", "Comer fora e delivery"),
+    ("gas stations", "Transporte"), ("parking", "Transporte"), ("tolls", "Transporte"), ("vehicle", "Transporte"), ("traffic", "Transporte"),
+    ("taxi", "Transporte"), ("public transportation", "Transporte"), ("car rental", "Transporte"), ("bicycle", "Transporte"),
+    ("transportation", "Transporte"), ("automotive", "Transporte"),
+    ("video streaming", "Assinaturas digitais"), ("music streaming", "Assinaturas digitais"), ("gaming", "Assinaturas digitais"), ("digital services", "Assinaturas digitais"),
+    ("rent", "Casa e contas"), ("houseware", "Casa e contas"), ("urban land", "Casa e contas"), ("water", "Casa e contas"), ("electricity", "Casa e contas"),
+    ("utilities", "Casa e contas"), ("housing", "Casa e contas"), ("internet", "Casa e contas"), ("mobile", "Casa e contas"), ("tv", "Casa e contas"),
+    ("telecommunications", "Casa e contas"),
+    ("pharmacy", "Saúde e bem-estar"), ("dentist", "Saúde e bem-estar"), ("optometry", "Saúde e bem-estar"), ("hospital", "Saúde e bem-estar"),
+    ("healthcare", "Saúde e bem-estar"), ("gyms", "Saúde e bem-estar"), ("sports practice", "Saúde e bem-estar"), ("wellness", "Saúde e bem-estar"),
+    ("online courses", "Educação"), ("university", "Educação"), ("school", "Educação"), ("kindergarten", "Educação"), ("education", "Educação"),
+    ("travel", "Lazer e viagens"), ("airport", "Lazer e viagens"), ("accommodation", "Lazer e viagens"), ("mileage", "Lazer e viagens"),
+    ("bus tickets", "Lazer e viagens"), ("leisure", "Lazer e viagens"), ("tickets", "Lazer e viagens"), ("stadiums", "Lazer e viagens"),
+    ("landmarks", "Lazer e viagens"), ("cinema", "Lazer e viagens"),
+    ("insurance", "Seguros"), ("gambling", "Apostas"), ("lottery", "Apostas"), ("online bet", "Apostas"),
+    ("fees", "Taxas e juros"), ("late payment", "Taxas e juros"), ("interests charged", "Taxas e juros"), ("tax", "Taxas e juros"),
+    ("loans", "Empréstimos"), ("financing", "Empréstimos"), ("alimony", "Pensão"), ("donations", "Doações"),
+    ("shopping", "Compras"), ("electronics", "Compras"), ("pet", "Compras"), ("clothing", "Compras"), ("kids", "Compras"),
+    ("bookstore", "Compras"), ("sports goods", "Compras"), ("office", "Compras"), ("cashback", None),
+    ("transfer", "Pix e transferências"), ("bank slip", "Boletos"), ("pix", "Pix e transferências"), ("ted", "Pix e transferências"), ("doc", "Pix e transferências"),
+]
+TIPO_CONTA = {"Assinaturas digitais", "Casa e contas", "Educação", "Saúde e bem-estar", "Seguros", "Pix e transferências",
+              "Boletos", "Empréstimos", "Pensão", "Outros", "Sem categoria", "Taxas e juros"}
+FATURA = re.compile(r"fatura|pagto cart|pagamento cart|pag\.? ?cart|pgto fat|pagamento de cart", re.I)
+
+
+def grupo_de(categoria):
+    c = (categoria or "").strip().lower()
+    if c in CAT_EXATA:
+        return CAT_EXATA[c]
+    for trecho, grupo in CAT_REGRAS:
+        if trecho in c:
+            return grupo
+    return "Outros" if c else "Sem categoria"
+
+
+def _chave_loja(desc):
+    d = (desc or "").lower()
+    d = re.sub(r"\b\d{1,2}\s*(/|de)\s*\d{1,2}\b", " ", d)
+    d = re.sub(r"[^a-zà-ú ]+", " ", d)
+    d = re.sub(r"\b(parc(ela)?|parcelado|compra|pix|enviado|pagamento|debito|credito|cartao)\b", " ", d)
+    return re.sub(r"\s+", " ", d).strip()[:40]
+
+
+def resumo_gastos(movs, hoje):
+    """movs: [(date, valor>0, categoria, descricao, origem, parcelado)] -> totais por mês/categoria + recorrentes."""
+    meses = [add_months(date(hoje.year, hoje.month, 1), -i) for i in range(3, -1, -1)]   # 3 anteriores + atual
+    chaves = [(m.year, m.month) for m in meses]
+    por_mes = {k: defaultdict(float) for k in chaves}
+    lojas = defaultdict(lambda: {"meses": defaultdict(list), "desc": "", "cat": "", "origem": "", "ultima": None})
+    for dia, valor, cat, desc, origem, parcelado in movs:
+        k = (dia.year, dia.month)
+        g = grupo_de(cat)
+        if g is None or k not in por_mes:
+            continue
+        por_mes[k][g] += valor
+        if not parcelado:
+            key = _chave_loja(desc)
+            if len(key) >= 3:
+                L = lojas[key]
+                L["meses"][k].append(valor)
+                if not L["ultima"] or dia >= L["ultima"]:
+                    L["ultima"], L["desc"], L["cat"], L["origem"] = dia, (desc or "").strip()[:40], g, origem
+    recorrentes = []
+    completos = chaves[:3]
+    for key, L in lojas.items():
+        presentes = [k for k in completos if k in L["meses"]]
+        if len(presentes) < 2 or any(len(L["meses"][k]) > 1 for k in L["meses"]):
+            continue                      # recorrente = no máximo uma cobrança por mês
+        totais = [sum(L["meses"][k]) for k in presentes]
+        media = sum(totais) / len(totais)
+        tolerancia = 0.25 if L["cat"] in TIPO_CONTA else 0.06   # mercado/delivery só se o valor for quase fixo
+        if media < 5 or (max(totais) - min(totais)) > tolerancia * media + 1:
+            continue
+        prox = add_months(L["ultima"], 1)
+        recorrentes.append({"desc": L["desc"], "cat": L["cat"], "origem": L["origem"], "media": round(media, 2),
+                            "meses": len(presentes), "ultima": L["ultima"].isoformat(), "proxima": prox.isoformat(),
+                            "esteMes": (hoje.year, hoje.month) in L["meses"]})
+    recorrentes.sort(key=lambda r: -r["media"])
+    return {"months": [{"ym": f"{y}-{m:02d}", "total": round(sum(por_mes[(y, m)].values()), 2),
+                        "byCat": {g: round(v, 2) for g, v in sorted(por_mes[(y, m)].items(), key=lambda x: -x[1])}} for (y, m) in chaves],
+            "recurring": recorrentes[:20], "monthDay": hoje.day}
 
 
 def main():
@@ -201,7 +299,8 @@ def main():
     headers = {"X-API-KEY": r.json()["apiKey"]}
 
     # 2) Lê as contas de cada conexão (item)
-    accounts, falhas = [], 0
+    accounts, falhas, movs = [], 0, []
+    hoje = date.today()
     for item_id in [i.strip() for i in env("PLUGGY_ITEM_IDS").split(",") if i.strip()]:
         try:
             item = requests.get(f"{API}/items/{item_id}", headers=headers, timeout=30)
@@ -220,12 +319,27 @@ def main():
                     nome = nome_cartao(acc.get("name"), credit.get("brand"), institution)
                 else:
                     nome = "Conta corrente" if acc.get("subtype") == "CHECKING_ACCOUNT" else ("Poupança" if acc.get("subtype") == "SAVINGS_ACCOUNT" else (acc.get("name") or "Conta"))
-                previsao, historico = [], []
+                previsao, historico, media_novos, txs = [], [], 0, None
+                origem = f"{institution} {nome}" if acc.get("type") == "CREDIT" else institution
                 if acc.get("type") == "CREDIT":
                     try:
-                        previsao, historico = faturas_cartao(acc, headers, date.today())
+                        previsao, historico, txs, media_novos = faturas_cartao(acc, headers, hoje)
                     except Exception as e:  # faturas são extra: se falhar, o saldo continua sendo gravado
                         print(f"Aviso: faturas de um cartão não puderam ser calculadas ({type(e).__name__})")
+                else:
+                    try:
+                        txs = listar_transacoes(acc["id"], headers, (hoje - timedelta(days=130)).isoformat())
+                    except Exception as e:
+                        print(f"Aviso: extrato de uma conta não pôde ser lido ({type(e).__name__})")
+                for t in txs or []:
+                    dia, valor = _data(t.get("date")), float(t.get("amount") or 0)
+                    if not dia or not valor or t.get("type") != "DEBIT":
+                        continue
+                    if FATURA.search(t.get("description") or "") and acc.get("type") != "CREDIT":
+                        continue                  # pagamento de fatura sai da conta mas o gasto já conta no cartão
+                    meta = t.get("creditCardMetadata") or {}
+                    movs.append((dia, abs(valor), t.get("category") or "", t.get("description") or "", origem,
+                                 int(meta.get("totalInstallments") or 0) > 1))
                 accounts.append({
                     "forecast": previsao,
                     "billsHist": historico,
@@ -238,6 +352,7 @@ def main():
                     "creditLimit": credit.get("creditLimit"),
                     "availableCreditLimit": credit.get("availableCreditLimit"),
                     "dueDate": (credit.get("balanceDueDate") or "")[:10],
+                    "avgNovos": media_novos,
                 })
         except requests.RequestException as e:
             falhas += 1
@@ -259,9 +374,19 @@ def main():
     col.document("balances").set(payload)
     # histórico diário (um documento por dia) para gráficos futuros
     col.document("hist-" + now.strftime("%Y-%m-%d")).set(payload)
+    gastos = resumo_gastos(movs, hoje)
+    gastos["updatedAt"] = now.isoformat()
+    col.document("spending").set(gastos)
+
+    try:
+        import resumo_email
+        enviado = resumo_email.talvez_enviar(db, uid, accounts, gastos, now)
+    except Exception as e:  # o resumo é extra: falha não derruba o robô
+        enviado = f"falhou ({type(e).__name__})"
 
     nf = sum(len(a["forecast"]) for a in accounts)
-    print(f"OK: {len(accounts)} contas atualizadas, {nf} faturas previstas, {falhas} conexões com falha")
+    print(f"OK: {len(accounts)} contas atualizadas, {nf} faturas previstas, {len(movs)} gastos lidos, "
+          f"{len(gastos['recurring'])} recorrentes, {falhas} conexões com falha; e-mail: {enviado}")
 
 
 if __name__ == "__main__":
