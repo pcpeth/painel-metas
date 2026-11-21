@@ -107,14 +107,6 @@ def listar_transacoes(acc_id, headers, desde):
             url, params = f"{API}/v2/transactions" + (nxt if nxt.startswith("?") else "?" + nxt), None
         else:                                        # só o cursor
             url, params = f"{API}/v2/transactions", {"accountId": acc_id, "dateFrom": desde, "after": nxt}
-    if os.environ.get("ROBO_DEBUG"):
-        ds = sorted(str(t.get("date"))[:10] for t in out)
-        print(f"  [debug] conta …{acc_id[-4:]}: {len(out)} transações, páginas={_+1}, de {ds[0] if ds else '-'} até {ds[-1] if ds else '-'}")
-        from collections import Counter
-        tipos = Counter((t.get("type"), "+" if float(t.get("amount") or 0) > 0 else "-", str(t.get("date"))[:7] >= date.today().isoformat()[:7]) for t in out)
-        print(f"  [debug]   tipos (type, sinal, mês atual/futuro): {dict(tipos)}")
-        rec = sorted(out, key=lambda t: str(t.get("date")))[-3:]
-        print(f"  [debug]   status/data das 3 últimas: {[(str(t.get('date'))[:10], t.get('type'), t.get('status')) for t in rec]}")
     vistos, unicos = set(), []
     for t in out:                                    # evita contar a mesma transação duas vezes
         k = t.get("id") or (t.get("date"), t.get("amount"), t.get("description"))
@@ -430,7 +422,13 @@ def main():
     nf = sum(len(a["forecast"]) for a in accounts)
     ult = {}
     for dia, _v, _c, _d, _o, _p, _id, tipo in movs:
-        ult[tipo] = max(ult.get(tipo, dia), dia)
+        if dia <= hoje:                       # parcelas futuras não contam como "último gasto"
+            ult[tipo] = max(ult.get(tipo, dia), dia)
+    por_conta = defaultdict(lambda: [0, None])
+    for dia, _v, _c, _d, origem, _p, _id, tipo in movs:
+        if dia <= hoje and tipo == "cartao":
+            pc = por_conta[origem]; pc[0] += 1; pc[1] = max(pc[1] or dia, dia)
+    print("Cartões (compras lidas / última): " + "; ".join(f"{o}: {n} / {d.strftime('%d/%m')}" for o, (n, d) in por_conta.items()))
     print("Conexões: " + "; ".join(f"{i['status']}/{i['executionStatus']} atualizada em {i['lastUpdatedAt']}" for i in itens_info))
     print("Último gasto lido: " + ", ".join(f"{t} {d.strftime('%d/%m')}" for t, d in sorted(ult.items())))
     col.document("robotStatus").set({"ok": True, "at": now.isoformat(), "contas": len(accounts), "falhas": falhas, "itens": itens_info,
