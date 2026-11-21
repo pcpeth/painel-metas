@@ -154,6 +154,15 @@ td.r{text-align:right}
 .cday.we{background:#141b2b}
 .cday .n{font-size:12px;font-weight:700}
 .cday .ev{font-size:10px;border-radius:4px;padding:1px 4px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
+.bills-wrap{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;align-items:start}
+.bills-wrap>*{min-width:0}
+.bill-row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+.bill-row:last-child{border:0}
+.bill-row small{color:var(--mut)}
+.tagest{font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;background:#2b3550;color:#aab6d3;margin-left:6px}
+.tagreal{font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;background:#163a28;color:var(--ok);margin-left:6px}
+.commit{background:var(--panel2);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;line-height:1.5}
+@media(max-width:1000px){.bills-wrap{grid-template-columns:1fr}}
 .legend{display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--mut);flex-wrap:wrap}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .hol-item{background:var(--panel2);border-radius:10px;padding:10px 12px}
@@ -269,6 +278,12 @@ td.r{text-align:right}
     <div class="card"><h3>🏦 Saldo nos bancos</h3><div id="balance"></div></div>
   </section>
 
+  <section class="card" id="billsCard" style="margin-bottom:16px" hidden>
+    <h3>💳 Faturas por mês</h3>
+    <div class="bills-wrap"><div class="chartbox" style="height:240px"><canvas id="chBills"></canvas></div><div id="billsSide"></div></div>
+    <div style="font-size:11px;color:var(--mut);margin-top:8px">Barras cheias = fatura fechada (valor real). Barras claras = estimativa: compras já lançadas + parcelas que ainda vão cair. Compras futuras não entram.</div>
+  </section>
+
   <div class="filters" id="filters"></div>
   <section class="grid" id="grid"></section>
   </div>
@@ -278,7 +293,7 @@ td.r{text-align:right}
       <div class="card">
         <div class="calhead"><button class="btn ghost sm" id="calPrev">‹</button><h3 id="calTitle"></h3><button class="btn ghost sm" id="calNext">›</button><button class="btn ghost sm" id="calToday">Hoje</button></div>
         <div class="calgrid" id="calGrid"></div>
-        <div class="legend"><span><i style="background:var(--warn)"></i>Feriado</span><span><i style="background:#8b97b0"></i>Ponto facultativo</span><span><i style="background:var(--acc)"></i>Ação</span><span><i style="background:var(--bad)"></i>Prazo de meta</span></div>
+        <div class="legend"><span><i style="background:var(--warn)"></i>Feriado</span><span><i style="background:#8b97b0"></i>Ponto facultativo</span><span><i style="background:var(--acc)"></i>Ação</span><span><i style="background:var(--bad)"></i>Prazo de meta</span><span><i style="background:#7a2f4a"></i>Fatura</span></div>
       </div>
       <div class="card"><h3>🏖️ Próximos feriados e emendas</h3><div id="holidays" class="today-list" style="max-height:none"></div></div>
     </section>
@@ -541,9 +556,10 @@ function openActionForm(a){
   setTimeout(()=>$("aTitle").focus(), 50);
 }
 function openDay(d){
-  const hs = holOn(d), dl = goals.filter(g=>g.deadline===d), as = actions.filter(a=>a.date===d).sort((x,y)=>(x.time||"").localeCompare(y.time||""));
+  const hs = holOn(d), dl = goals.filter(g=>g.deadline===d), as = actions.filter(a=>a.date===d).sort((x,y)=>(x.time||"").localeCompare(y.time||"")), bl = allBills().filter(b=>b.due===d);
   $("modal").innerHTML = `<div id="dayPanel" data-day="${d}"><h2 style="text-transform:capitalize">${parse(d).toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</h2>
     <div class="sub">${hs.map(h=>`🏖️ ${esc(h.name)}${h.type==="facultativo"?" (ponto facultativo)":""}`).join(" · ") || (isWeekend(d)?"Fim de semana":"Dia útil")}</div>
+    ${bl.length?`<div class="sec"><h5>Faturas</h5>${bl.map(b=>`<div class="bill-row"><span>💳 ${esc(b.card)}${b.real?'<span class="tagreal">fechada</span>':'<span class="tagest">estimada</span>'}</span><b>${brl(b.amount)}</b></div>`).join("")}</div>`:""}
     ${dl.length?`<div class="sec"><h5>Prazos de metas</h5>${dl.map(g=>`<div class="act"><span class="t" data-open="${g.id}" style="cursor:pointer">🚩 ${esc(g.title)}</span></div>`).join("")}</div>`:""}
     <div class="sec"><h5>Ações</h5><div class="today-list" style="max-height:none">${as.length?as.map(a=>actRow(a,false)).join(""):`<div style="color:var(--mut);font-size:13px">Nada agendado.</div>`}</div></div>
     <div class="actions"><button class="btn ghost" id="dpClose">Fechar</button><button class="btn" id="dpNew">+ Nova ação neste dia</button></div></div>`;
@@ -591,10 +607,13 @@ function insights(){
   }
   const overdue = actions.filter(a => !a.done && a.date < t);
   if (overdue.length) out.push({p:1, lv:"bad", ic:"⌛", tx:`${overdue.length} ação${overdue.length>1?"ões":""} atrasada${overdue.length>1?"s":""}: ${overdue.slice(0,2).map(a=>esc(a.title)).join(", ")}${overdue.length>2?"…":""}.`, tab:"hoje"});
-  if (finance && finance.accounts) for (const a of finance.accounts.filter(x=>x.type==="CREDIT" && x.dueDate)){
-    const d = diffDays(t, a.dueDate);
-    if (d >= 0 && d <= 5 && Number(a.balance) > 0) out.push({p:1, lv:"warn", ic:"💳", tx:`Fatura <b>${esc(a.institution)} ${esc(a.name)}</b> vence ${d===0?"hoje":`em ${d} dia${d>1?"s":""}`}: ${brl(a.balance)}.`});
+  for (const a of cards()){
+    const nb = nextBill(a), due = nb ? nb.due : a.dueDate, val = nb ? Number(nb.amount) : null;
+    if (!due) continue;
+    const d = diffDays(t, due);
+    if (d >= 0 && d <= 5 && (val === null || val > 0)) out.push({p:1, lv:"warn", ic:"💳", tx:`Fatura <b>${esc(a.institution)} ${esc(a.name)}</b> vence ${d===0?"hoje":`em ${d} dia${d>1?"s":""}`}${val!==null?`: <b>${brl(val)}</b>${nb.real?"":" (estimada)"}`:""}.`});
   }
+  if (allBills().length){ const c = committed(30), sb = emConta(); if (c > sb) out.push({p:1, lv:"bad", ic:"🧮", tx:`As faturas dos próximos 30 dias (<b>${brl(c)}</b>) passam do saldo em conta (<b>${brl(sb)}</b>). Faltam <b>${brl(c-sb)}</b>.`}); }
   const b = holidayBlocks(t, 1)[0];
   if (b && !b.onWeekend){ const d = diffDays(t, b.start); if (d > 0 && d <= 30) out.push({p:5, lv:"ok", ic:"🏖️", tx:`${esc(b.names[0])} em ${d} dias: ${b.days} dias de folga${b.bridge?` (${b.bridge.total} com emenda)`:""}. Que tal reservar um bloco de foco?`, planDay:`${b.start}|${b.names[0]}`}); }
   return out.sort((a,b)=>a.p-b.p);
@@ -629,7 +648,11 @@ function renderHoje(){
   const nums = goals.filter(g=>g.type==="numeric" && calc(g).status!=="concluida");
   $("hojeNums").innerHTML = nums.length ? nums.map(g => `<div class="numrow"><span class="t">${esc(g.title)}<small>${esc(calc(g).label)}</small></span><input type="number" inputmode="decimal" step="any" placeholder="novo valor" id="qn-${g.id}"><button class="btn sm" data-qnum="${g.id}">Salvar</button></div>`).join("") : `<div style="color:var(--mut);font-size:13px">Sem metas numéricas.</div>`;
   if (finance && finance.accounts){ $("hojeBalCard").hidden = false; const tot = finance.accounts.filter(a=>a.type!=="CREDIT").reduce((s,a)=>s+Number(a.balance||0),0), cr = finance.accounts.filter(a=>a.type==="CREDIT").reduce((s,a)=>s+Number(a.balance||0),0);
-    $("hojeBal").innerHTML = `<div class="bal-row"><span>Em conta</span><b style="color:var(--ok)">${brl(tot)}</b></div><div class="bal-row"><span>Faturas de cartão</span><b style="color:var(--bad)">${brl(cr)}</b></div><div style="font-size:11px;color:var(--mut);margin-top:4px">Detalhes na aba Metas</div>`; }
+    const nbs = cards().map(a=>({a, nb: nextBill(a)})).filter(x=>x.nb);
+    $("hojeBal").innerHTML = `<div class="bal-row"><span>Em conta</span><b style="color:var(--ok)">${brl(tot)}</b></div>` +
+      (nbs.length ? nbs.map(({a,nb})=>`<div class="bal-row"><span>💳 ${esc(a.institution)}<br><small style="color:var(--mut)">vence ${fmtDate(nb.due)}${nb.real?"":" · estimada"}</small></span><b style="color:var(--bad)">${brl(nb.amount)}</b></div>`).join("") + commitHtml()
+                  : `<div class="bal-row"><span>Limite usado nos cartões</span><b style="color:var(--bad)">${brl(cr)}</b></div>`) +
+      `<div style="font-size:11px;color:var(--mut);margin-top:6px">Faturas mês a mês na aba Metas</div>`; }
   else $("hojeBalCard").hidden = true;
 }
 
@@ -701,6 +724,34 @@ function renderNext7(){
     `<div style="margin-top:6px"><button class="btn ghost sm" data-newact="1">+ Agendar ação</button></div>`;
 }
 
+/* ============ FATURAS ============ */
+const CARD_COLORS = ["#ef5b8a","#f2b33d","#22b8cf","#b07cff","#2fbf71","#6d8bff"];
+function cards(){ return finance && finance.accounts ? finance.accounts.filter(a=>a.type==="CREDIT") : []; }
+function allBills(){ return cards().flatMap(a => (a.forecast||[]).map(f => ({...f, card:`${a.institution} ${a.name}`, inst:a.institution}))); }
+function emConta(){ return finance && finance.accounts ? finance.accounts.filter(a=>a.type!=="CREDIT").reduce((s,a)=>s+Number(a.balance||0),0) : 0; }
+function committed(days){ const t = today(), end = addDays(t, days); return allBills().filter(b => b.due >= t && b.due <= end).reduce((s,b)=>s+Number(b.amount||0),0); }
+function nextBill(a){ const t = today(); return (a.forecast||[]).find(f => f.due >= t) || null; }
+function commitHtml(){
+  const c = committed(30), saldo = emConta(), sobra = saldo - c;
+  return `<div class="commit">Faturas a pagar nos próximos 30 dias: <b>${brl(c)}</b><br>Em conta hoje: <b>${brl(saldo)}</b> → ${sobra>=0?`sobra <b style="color:var(--ok)">${brl(sobra)}</b>`:`faltam <b style="color:var(--bad)">${brl(-sobra)}</b>`}</div>`;
+}
+function renderBills(){
+  const card = $("billsCard"), cs = cards().filter(a => (a.forecast||[]).length);
+  card.hidden = !cs.length; if (!cs.length) return;
+  const months = [...new Set(cs.flatMap(a => a.forecast.map(f => f.due.slice(0,7))))].sort().slice(0,6);
+  const lbl = m => parse(m+"-01").toLocaleDateString("pt-BR",{month:"short",year:"2-digit"});
+  const ds = cs.map((a,i) => { const col = CARD_COLORS[i % CARD_COLORS.length];
+    const pts = months.map(m => a.forecast.find(f => f.due.slice(0,7)===m));
+    return {label:`${a.institution} ${a.name}`, data: pts.map(f => f ? Number(f.amount) : 0),
+      backgroundColor: pts.map(f => f && f.real ? col : col+"66"), borderColor: col, borderWidth: 1, borderRadius: 4}; });
+  if (charts.bills) charts.bills.destroy();
+  charts.bills = new Chart($("chBills"), {type:"bar", data:{labels: months.map(lbl), datasets: ds},
+    options:{maintainAspectRatio:false, plugins:{legend:{position:"bottom",labels:{boxWidth:10}}, tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${brl(c.raw)}`, footer:items=>"Total: "+brl(items.reduce((s,i)=>s+i.raw,0))}}},
+      scales:{x:{stacked:true,grid:{display:false}}, y:{stacked:true,grid:{color:"#1c2538"},ticks:{callback:v=>"R$ "+Number(v).toLocaleString("pt-BR")}}}}});
+  const tot = months.map(m => ({m, v: allBills().filter(b=>b.due.slice(0,7)===m).reduce((s,b)=>s+Number(b.amount||0),0), real: allBills().filter(b=>b.due.slice(0,7)===m).every(b=>b.real)}));
+  $("billsSide").innerHTML = tot.map(x => `<div class="bill-row"><span>${lbl(x.m)}${x.real?'<span class="tagreal">fechada</span>':'<span class="tagest">estimada</span>'}</span><b>${brl(x.v)}</b></div>`).join("") + commitHtml();
+}
+
 function renderBalance(){
   const B = $("balance");
   if (!finance || !finance.accounts){ B.innerHTML = `<div style="color:var(--mut);font-size:13px;line-height:1.5">Ainda não conectado.<br>Quando o robô do Open Finance estiver ativo, o saldo das suas contas aparece aqui automaticamente.</div>`; return; }
@@ -710,7 +761,11 @@ function renderBalance(){
   const upd = finance.updatedAt ? new Date(finance.updatedAt).toLocaleString("pt-BR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
   B.innerHTML = `<div class="bal-total">${brl(total)}</div><div style="font-size:11px;color:var(--mut);margin-bottom:8px">em conta · atualizado ${upd}</div>` +
     bank.map(a=>`<div class="bal-row"><span>${esc(a.institution||"")} · ${esc(a.name||"")}</span><b>${brl(a.balance)}</b></div>`).join("") +
-    cards.map(a=>`<div class="bal-row"><span>💳 ${esc(a.institution||"")} · ${esc(a.name||"")}${a.dueDate?`<br><small style="color:var(--mut)">vence ${fmtDate(a.dueDate)}${a.creditLimit?` · limite ${brl(a.creditLimit)}`:""}</small>`:""}</span><b style="color:var(--bad)">${brl(a.balance)}</b></div>`).join("");
+    cards.map(a=>{ const nb = nextBill(a);
+      const sub = nb ? `fatura de ${fmtDate(nb.due)}${nb.real?"":" (estimada)"} · limite usado ${brl(a.balance)}${a.creditLimit?` de ${brl(a.creditLimit)}`:""}`
+                     : `limite usado${a.creditLimit?` de ${brl(a.creditLimit)}`:""}${a.dueDate?` · vence ${fmtDate(a.dueDate)}`:""}`;
+      return `<div class="bal-row"><span>💳 ${esc(a.institution||"")} · ${esc(a.name||"")}<br><small style="color:var(--mut)">${sub}</small></span><b style="color:var(--bad)">${brl(nb ? nb.amount : a.balance)}</b></div>`; }).join("") +
+    (allBills().length ? commitHtml() : "");
 }
 
 function renderCal(){
@@ -720,11 +775,12 @@ function renderCal(){
   let h = ["seg","ter","qua","qui","sex","sáb","dom"].map(w=>`<div class="wd">${w}</div>`).join("");
   for (let i=0;i<42;i++){
     const d = addDays(startD,i); if (i>=35 && d.slice(0,7)!==calMonth) break;
-    const hs = holOn(d), as = actions.filter(a=>a.date===d), dl = goals.filter(g=>g.deadline===d);
+    const hs = holOn(d), as = actions.filter(a=>a.date===d), dl = goals.filter(g=>g.deadline===d), bl = allBills().filter(b=>b.due===d);
     const cls = ["cday", d.slice(0,7)!==calMonth?"out":"", d===today()?"tod":"", hs.some(x=>x.type==="feriado")?"hol":isWeekend(d)?"we":""].join(" ");
     h += `<div class="${cls}" data-calday="${d}"><div class="n">${parse(d).getDate()}</div>` +
       hs.map(x=>`<div class="ev" style="background:${x.type==="feriado"?"#a7780f":"#4b5568"}" title="${esc(x.name)}">${esc(x.name)}</div>`).join("") +
       dl.map(g=>`<div class="ev" style="background:var(--bad)" title="Prazo: ${esc(g.title)}">🚩 ${esc(g.title)}</div>`).join("") +
+      bl.map(b=>`<div class="ev" style="background:#7a2f4a" title="Fatura ${esc(b.card)}: ${brl(b.amount)}${b.real?"":" (estimada)"}">💳 ${esc(b.inst)} ${brl(b.amount)}</div>`).join("") +
       as.map(a=>`<div class="ev" style="background:${a.done?"#2b3550":"var(--acc)"}" title="${esc(a.title)}">${a.time?a.time+" ":""}${esc(a.title)}</div>`).join("") + `</div>`;
   }
   $("calGrid").innerHTML = h;
@@ -808,7 +864,7 @@ function render(){
     `<input id="q" placeholder="Buscar meta..." value="${esc(filt.q)}">`;
   $("q").oninput = e => { filt.q = e.target.value; renderGrid(list); };
   renderGrid(list);
-  renderNext7(); renderBalance(); renderInsights($("insPainel"), 6);
+  renderNext7(); renderBalance(); renderBills(); renderInsights($("insPainel"), 6);
   if (tab === "cal") renderCal();
   if (tab === "hoje") renderHoje();
   saveCache();
@@ -958,6 +1014,7 @@ function drawDetail(){
     <div class="bigp"><b style="color:${a.c}">${Math.round(c.p*100)}%</b><span>${esc(c.label)}</span></div>
     <div class="bar" style="--c:${a.c}"><i style="width:${c.p*100}%"></i>${c.expected!=null&&c.status!=="concluida"?`<u style="left:${c.expected*100}%"></u>`:""}</div>
     <div style="font-size:12px;color:var(--mut);margin-top:8px">${rit}</div>
+    ${g.area==="dinheiro" && allBills().length ? `<div class="sec"><h5>💳 Cartões x esta meta</h5>${commitHtml()}<div style="font-size:12px;color:var(--mut);margin-top:6px">Próximos meses: ${[...new Set(allBills().map(b=>b.due.slice(0,7)))].sort().slice(0,4).map(m=>`${parse(m+"-01").toLocaleDateString("pt-BR",{month:"short"})} ${brl(allBills().filter(b=>b.due.slice(0,7)===m).reduce((s,b)=>s+Number(b.amount||0),0))}`).join(" · ")}</div></div>` : ""}
     ${body}
     ${(()=>{ const as = actions.filter(a=>a.goalId===g.id && !a.done).sort((x,y)=>x.date.localeCompare(y.date)); return as.length?`<div class="sec"><h5>Ações agendadas</h5><div class="today-list" style="max-height:none">${as.map(a=>actRow(a)).join("")}</div></div>`:""; })()}
     <div class="actions"><button class="btn ghost" id="dEdit">Editar</button><button class="btn ghost" id="dAct">📅 Agendar ação</button><span class="sp"></span><button class="btn" id="dClose">Fechar</button></div>`;
