@@ -331,6 +331,7 @@ td.r{text-align:right}
     <div id="spendRec"></div>
   </section>
 
+    <section class="card" style="margin-bottom:16px"><h3>🧾 Últimas compras</h3><div id="lastBuys"></div></section>
     <section class="card" style="margin-bottom:16px"><h3>📌 Entradas e contas fixas</h3><div id="flowLists"></div></section>
   </div>
 
@@ -925,7 +926,7 @@ function renderFin(){
     ["Contas fixas 30 dias", brl(f.fix), fixItems().length ? `${fixItems().length} cadastradas + recorrentes` : "cadastre as fixas", "var(--warn)"],
     ["Gasto no mês", S ? brl(S.cur.total) : "—", S && S.avg ? `média ${brl(S.avg)}` : "", "var(--txt)"]
   ].map(([l,v,s,c]) => `<div class="kpi"><div class="l">${l}</div><div class="v" style="color:${c};font-size:22px">${v}</div><div class="s">${s}</div></div>`).join("");
-  renderFlowChart(); renderRaise(); renderFlowLists();
+  renderFlowChart(); renderRaise(); renderFlowLists(); renderLastBuys();
 }
 function flowSeries(days, sim, novos){
   const t = today(), f = cashFlow(days, false, sim); let bal = emConta(), i = 0; const pts = [];
@@ -1074,6 +1075,18 @@ function renderFlowLists(){
       <button class="btn ghost sm" data-incomes="1" style="margin-top:8px">💰 Editar entradas</button></div>
     <div><h5 style="margin:0 0 4px;font-size:12px;color:var(--mut);text-transform:uppercase">Saem fora do cartão (45 dias)</h5>${fx.map(x=>row("📌",x,"var(--bad)")).join("") || `<div style="color:var(--mut);font-size:13px">Nenhuma conta fixa ainda.</div>`}
       <button class="btn ghost sm" data-fixed="1" style="margin-top:8px">📌 Contas fixas</button></div></div>`;
+}
+let buyFilter = "";
+function renderLastBuys(){
+  const B = $("lastBuys"), t = today(); if (!B) return;
+  const all = ((spending && spending.items) || []).filter(it => it.d <= t && catOf(it) !== "Ignorar");
+  if (!all.length){ B.innerHTML = `<div style="color:var(--mut);font-size:13px">O robô ainda não trouxe compras.</div>`; return; }
+  const origens = [...new Set(all.map(it => it.o))];
+  const L = all.filter(it => !buyFilter || it.o === buyFilter).sort((a,b)=>b.d.localeCompare(a.d) || b.v-a.v).slice(0, 25);
+  const upd = robotStatus && robotStatus.at ? new Date(robotStatus.at).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "";
+  B.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="btn ${buyFilter?"ghost":""} sm" data-buyf="">Todas</button>${origens.map(o=>`<button class="btn ${buyFilter===o?"":"ghost"} sm" data-buyf="${esc(o)}">${esc(o)}</button>`).join("")}</div>` +
+    L.map(it => `<div class="rec-row" data-cat="${esc(catOf(it))}" style="cursor:pointer"><span>${esc(it.desc)}<br><small><span style="color:${catCol(catOf(it))}">●</span> ${esc(catOf(it))} · ${fmtDate(it.d)} · ${esc(it.o)}${it.p?" · parcela":""}</small></span><b>${brl(it.v)}</b></div>`).join("") +
+    `<div style="font-size:11.5px;color:var(--mut);margin-top:6px">Compras aparecem quando o banco envia ao Open Finance e o robô passa (≈7h e 22h)${upd?` · última leitura ${upd}`:""}. Toque numa compra para corrigir a categoria.</div>`;
 }
 function finMiniHtml(){
   if (!finance || !finance.accounts) return `<div style="color:var(--mut);font-size:13px">Ainda não conectado.</div>`;
@@ -1421,7 +1434,7 @@ function renderGrid(list){
 
 /* ============ EVENTOS GLOBAIS ============ */
 document.addEventListener("click", async e => {
-  const t = e.target.closest("[data-check],[data-open],[data-fa],[data-fs],[data-calday],[data-actdone],[data-actedit],[data-newact],[data-plan],[data-planfor],[data-step],[data-qnum],[data-incomes],[data-fixed],[data-cat],[data-mkgoal],[data-fold],[data-gofin],[data-budgets],[data-raise],[data-payroll]");
+  const t = e.target.closest("[data-check],[data-open],[data-fa],[data-fs],[data-calday],[data-actdone],[data-actedit],[data-newact],[data-plan],[data-planfor],[data-step],[data-qnum],[data-incomes],[data-fixed],[data-cat],[data-mkgoal],[data-fold],[data-gofin],[data-budgets],[data-raise],[data-payroll],[data-buyf]");
   if (!t) return;
   if (t.dataset.planfor){ openActionForm({id:uid(), title:"", date:today(), time:"", goalId:t.dataset.planfor, notes:"", done:false}); return; }
   if (t.dataset.step){ const [gid, mid] = t.dataset.step.split("|"); const g = goals.find(x=>x.id===gid); const m = g && g.milestones.find(x=>x.id===mid); if (m){ m.done = true; m.doneAt = today(); save(g); toast("✓ Etapa concluída. Bravo !"); } return; }
@@ -1432,6 +1445,7 @@ document.addEventListener("click", async e => {
   if (t.dataset.budgets){ openBudgets(); return; }
   if (t.dataset.raise){ openRaise(); return; }
   if (t.dataset.payroll){ openPayroll(); return; }
+  if (t.dataset.buyf !== undefined){ buyFilter = t.dataset.buyf; renderLastBuys(); return; }
   if (t.dataset.cat){ openCat(t.dataset.cat); return; }
   if (t.dataset.fold){ const k = t.dataset.fold, F = foldState(); F[k] = !F[k]; try { localStorage.setItem("pm-fold", JSON.stringify(F)); } catch {} applyFolds(); return; }
   if (t.dataset.mkgoal){ const ym = n => { const d = new Date(); d.setMonth(d.getMonth()+n); return d.toLocaleDateString("pt-BR",{month:"long"}); };
