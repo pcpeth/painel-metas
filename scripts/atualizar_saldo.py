@@ -33,6 +33,20 @@ def env(name):
     return value
 
 
+BANCOS = [("nu pagamentos", "Nubank"), ("nubank", "Nubank"), ("picpay", "PicPay"), ("santander", "Santander"),
+          ("itau", "Itaú"), ("itaú", "Itaú"), ("bradesco", "Bradesco"), ("caixa", "Caixa"), ("banco do brasil", "Banco do Brasil"),
+          ("inter", "Inter"), ("c6", "C6 Bank"), ("mercado pago", "Mercado Pago"), ("btg", "BTG"), ("xp ", "XP")]
+
+
+def nome_banco(texto):
+    """Nome curto do banco a partir do nome da conta (ex.: 'Nu Pagamentos S.A. - ...' -> 'Nubank')."""
+    t = (texto or "").lower()
+    for chave, nome in BANCOS:
+        if chave in t:
+            return nome
+    return (texto or "").split(" - ")[0].replace(" S.A.", "").replace(" S/A", "").strip()
+
+
 def main():
     # 1) Autentica na Pluggy
     r = requests.post(f"{API}/auth", json={"clientId": env("PLUGGY_CLIENT_ID"),
@@ -48,17 +62,29 @@ def main():
             item = requests.get(f"{API}/items/{item_id}", headers=headers, timeout=30)
             item.raise_for_status()
             item = item.json()
-            institution = (item.get("connector") or {}).get("name", "")
+            connector = (item.get("connector") or {}).get("name", "")
             res = requests.get(f"{API}/accounts", params={"itemId": item_id}, headers=headers, timeout=30)
             res.raise_for_status()
-            for acc in res.json().get("results", []):
+            contas = res.json().get("results", [])
+            # Via MeuPluggy o conector se chama "MeuPluggy"; o banco real vem no nome da conta corrente
+            banco_ref = next((a.get("name") for a in contas if a.get("type") == "BANK"), "")
+            institution = nome_banco(banco_ref) if (banco_ref and connector.lower() == "meupluggy") else (connector or nome_banco(banco_ref))
+            for acc in contas:
+                credit = acc.get("creditData") or {}
+                if acc.get("type") == "CREDIT":
+                    nome = " ".join(x for x in [credit.get("brand", "").title(), (acc.get("name") or "").title()] if x)
+                else:
+                    nome = "Conta corrente" if acc.get("subtype") == "CHECKING_ACCOUNT" else ("Poupança" if acc.get("subtype") == "SAVINGS_ACCOUNT" else (acc.get("name") or "Conta"))
                 accounts.append({
                     "institution": institution,
-                    "name": acc.get("marketingName") or acc.get("name") or "",
+                    "name": nome,
                     "type": acc.get("type", ""),          # BANK ou CREDIT
                     "subtype": acc.get("subtype", ""),
                     "balance": acc.get("balance") or 0,
                     "currency": acc.get("currencyCode", "BRL"),
+                    "creditLimit": credit.get("creditLimit"),
+                    "availableCreditLimit": credit.get("availableCreditLimit"),
+                    "dueDate": (credit.get("balanceDueDate") or "")[:10],
                 })
         except requests.RequestException as e:
             falhas += 1
