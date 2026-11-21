@@ -104,12 +104,21 @@ def saidas_fixas(fixas, gastos, ini, fim, hoje):
     return sorted(out)
 
 
-def livre(accounts, itens, goals, hoje, fixas=None, gastos=None):
+def com_aumento(lista, itens, aumento):
+    """Aplica o aumento (só quando tem data confirmada) às entradas a partir daquela data."""
+    atual = sum(float(i.get("amount") or 0) for i in itens)
+    if not aumento or not aumento.get("from") or not float(aumento.get("net") or 0) or not atual:
+        return lista
+    ini, fator = date.fromisoformat(aumento["from"]), float(aumento["net"]) / atual
+    return [(d, n, v * fator if d >= ini else v) for d, n, v in lista]
+
+
+def livre(accounts, itens, goals, hoje, fixas=None, gastos=None, aumento=None):
     ligadas = {(g.get("auto") or "")[4:] for g in goals if g.get("type") == "numeric" and (g.get("auto") or "").startswith("acc:")}
     saldo = sum(float(a.get("balance") or 0) for a in accounts
                 if a.get("type") != "CREDIT" and f"{a.get('institution')}|{a.get('name')}" not in ligadas)
     fim = hoje + timedelta(days=45)
-    ev = [(d, 0, v, "💰 " + n) for d, n, v in entradas(itens, hoje + timedelta(days=1), fim)]
+    ev = [(d, 0, v, "💰 " + n) for d, n, v in com_aumento(entradas(itens, hoje + timedelta(days=1), fim), itens, aumento)]
     ev += [(d, 1, -v, "📌 " + n) for d, n, v in saidas_fixas(fixas, gastos, hoje, fim, hoje)]
     for a in accounts:
         if a.get("type") != "CREDIT":
@@ -147,8 +156,8 @@ def _streak(checks, hoje):
     return s
 
 
-def montar(accounts, gastos, goals, actions, itens, hoje, fixas=None):
-    L = livre(accounts, itens, goals, hoje, fixas, gastos)
+def montar(accounts, gastos, goals, actions, itens, hoje, fixas=None, aumento=None):
+    L = livre(accounts, itens, goals, hoje, fixas, gastos, aumento)
     linhas = []
     cor = "#2fbf71" if L["livre"] >= 0 else "#ef5b5b"
     topo = (f"<div style='font-size:13px;color:#8a94a8'>Pode gastar hoje</div>"
@@ -234,9 +243,10 @@ def talvez_enviar(db, uid, accounts, gastos, agora):
     goals = [d.to_dict() for d in base.collection("goals").stream()]
     actions = [d.to_dict() for d in base.collection("actions").stream()]
     inc = base.collection("finance").document("incomes").get()
-    itens = (inc.to_dict() or {}).get("items", []) if inc.exists else []
+    inc_d = (inc.to_dict() or {}) if inc.exists else {}
+    itens, aumento = inc_d.get("items", []), inc_d.get("raise")
     fx = base.collection("finance").document("fixed").get()
-    assunto, html = montar(accounts, gastos, goals, actions, itens, hoje, (fx.to_dict() or {}) if fx.exists else {})
+    assunto, html = montar(accounts, gastos, goals, actions, itens, hoje, (fx.to_dict() or {}) if fx.exists else {}, aumento)
     msg = MIMEMultipart("alternative")
     msg["Subject"], msg["From"], msg["To"] = assunto, f"Painel de Metas <{user}>", os.environ.get("EMAIL_TO", "").strip() or user
     msg.attach(MIMEText(html, "html", "utf-8"))

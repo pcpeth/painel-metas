@@ -268,7 +268,7 @@ td.r{text-align:right}
   <header>
     <h1>🎯 Painel de <span>Metas</span></h1>
     <div class="sp"></div>
-    <nav class="tabs desk"><button data-tab="hoje">☀️ Hoje</button><button class="on" data-tab="painel">📊 Painel</button><button data-tab="cal">📅 Calendário</button></nav>
+    <nav class="tabs desk"><button data-tab="hoje">☀️ Hoje</button><button class="on" data-tab="painel">📊 Painel</button><button data-tab="fin">💰 Finanças</button><button data-tab="cal">📅 Calendário</button></nav>
     <button class="btn ghost sm desk" id="btnReview" title="Resumo dos últimos 7 dias">📋 Revisão</button>
     <button class="btn ghost sm desk" id="btnExport" title="Baixar backup JSON">⬇ Backup</button>
     <label class="btn ghost sm desk" title="Importar metas de um arquivo JSON" style="cursor:pointer">⬆ Importar<input type="file" id="fileImport" accept=".json,application/json" hidden></label>
@@ -286,8 +286,6 @@ td.r{text-align:right}
     <div class="card"><h3>✅ Ações</h3><div id="hojeActs" class="today-list" style="max-height:none"></div></div>
     <div class="card" data-foldcard="steps"><h3 class="foldh" data-fold="steps">🧩 Próximas etapas</h3><div id="hojeSteps" class="today-list" style="max-height:none"></div></div>
     <div class="card" data-foldcard="nums"><h3 class="foldh" data-fold="nums">📈 Registro rápido</h3><div id="hojeNums"></div></div>
-    <div class="card" id="hojeSpendCard" data-foldcard="spend" hidden><h3 class="foldh" data-fold="spend">🧭 Gastos do mês</h3><div id="hojeSpend"></div></div>
-    <div class="card" id="hojeBalCard" data-foldcard="bal"><h3 class="foldh" data-fold="bal">🏦 Saldo e faturas</h3><div id="hojeBal"></div></div>
   </div>
 
   <div id="viewPainel">
@@ -302,9 +300,25 @@ td.r{text-align:right}
 
   <section class="row2">
     <div class="card"><h3>Próximos 7 dias</h3><div id="next7" class="today-list"></div></div>
-    <div class="card"><h3>🏦 Saldo nos bancos</h3><div id="balance"></div></div>
+    <div class="card"><h3>💰 Finanças</h3><div id="finMini"></div></div>
   </section>
 
+  <div class="filters" id="filters"></div>
+  <section class="grid" id="grid"></section>
+  </div>
+
+  <div id="viewFin" hidden>
+    <div class="card spend-tile" id="tileFin" style="margin-bottom:16px"></div>
+    <section class="kpis" id="finKpis"></section>
+    <section class="card" id="flowCard" style="margin-bottom:16px">
+      <h3>📈 Saldo projetado · próximos 60 dias</h3><div id="flowHead" class="spend-head"></div>
+      <div class="chartbox" style="height:260px"><canvas id="chFlow"></canvas></div>
+      <div style="font-size:11px;color:var(--mut);margin-top:6px">Linha cheia = como está hoje (salário + faturas + contas fixas). Tracejada = com o aumento (simulação). Área cinza = compras de costume no cartão ainda não feitas.</div>
+    </section>
+    <section class="row2">
+      <div class="card"><h3>🏦 Contas e cartões</h3><div id="balance"></div></div>
+      <div class="card"><h3>🚀 Plano do aumento</h3><div id="raiseBox"></div></div>
+    </section>
   <section class="card" id="billsCard" style="margin-bottom:16px" hidden>
     <h3>💳 Faturas por mês</h3>
     <div class="bills-wrap"><div class="chartbox" style="height:240px"><canvas id="chBills"></canvas></div><div id="billsSide"></div></div>
@@ -312,13 +326,12 @@ td.r{text-align:right}
   </section>
 
   <section class="card" id="spendCard" style="margin-bottom:16px" hidden>
-    <h3>🧭 Para onde vai o dinheiro</h3><div id="spendHead" class="spend-head"></div>
+    <h3 style="display:flex;justify-content:space-between;align-items:center">🧭 Para onde vai o dinheiro <button class="btn ghost sm" data-budgets="1">🎯 Orçamentos</button></h3><div id="spendHead" class="spend-head"></div>
     <div class="bills-wrap"><div class="chartbox" style="height:240px"><canvas id="chSpend"></canvas></div><div id="spendSide"></div></div>
     <div id="spendRec"></div>
   </section>
 
-  <div class="filters" id="filters"></div>
-  <section class="grid" id="grid"></section>
+    <section class="card" style="margin-bottom:16px"><h3>📌 Entradas e contas fixas</h3><div id="flowLists"></div></section>
   </div>
 
   <div id="viewCal" hidden>
@@ -337,8 +350,8 @@ td.r{text-align:right}
   <button data-tab="hoje" class="on"><i>☀️</i>Hoje</button>
   <button data-tab="painel"><i>🎯</i>Metas</button>
   <button class="plus" id="btnPlus" aria-label="Adicionar">＋</button>
+  <button data-tab="fin"><i>💰</i>Finanças</button>
   <button data-tab="cal"><i>📅</i>Agenda</button>
-  <button id="btnReview3"><i>📋</i>Revisão</button>
 </nav>
 
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
@@ -503,7 +516,7 @@ document.getElementById("btnLogin").onclick = async () => {
 };
 
 /* ============ ESTADO E RENDER ============ */
-let goals = [], actions = [], finance = null, incomes = null, spending = null, fixed = null, catRules = null, robotStatus = null;
+let goals = [], actions = [], finance = null, incomes = null, spending = null, fixed = null, catRules = null, robotStatus = null, budgets = null;
 const $ = id => document.getElementById(id);
 let tab = (()=>{ try { return localStorage.getItem("pm-tab") || (matchMedia("(max-width:760px)").matches ? "hoje" : "painel"); } catch { return "painel"; } })(), calMonth = today().slice(0,7);
 
@@ -661,7 +674,11 @@ function insights(){
   }
   const S = spendInfo();
   if (S && S.isCur && S.avg && S.dia >= 7 && S.ritmo > S.avg*1.1){ const up = S.rows.filter(r=>r.a>0).map(r=>({...r, d:r.proj-r.a})).sort((a,b)=>b.d-a.d)[0];
-    out.push({p:2, lv:"warn", ic:"📊", tx:`No ritmo atual o mês fecha em <b>${brl(S.ritmo)}</b>, ${Math.round((S.ritmo/S.avg-1)*100)}% acima da sua média${up && up.d>0?`. Maior alta: <b>${esc(up.c)}</b> (+${brl(up.d)})`:""}.`, tab:"painel"}); }
+    out.push({p:2, lv:"warn", ic:"📊", tx:`No ritmo atual o mês fecha em <b>${brl(S.ritmo)}</b>, ${Math.round((S.ritmo/S.avg-1)*100)}% acima da sua média${up && up.d>0?`. Maior alta: <b>${esc(up.c)}</b> (+${brl(up.d)})`:""}.`, gofin:1}); }
+  const BG = (budgets && budgets.byCat) || {};
+  if (S && S.isCur) for (const r of S.rows){ const b = Number(BG[r.c]||0); if (!b) continue;
+    if (r.v > b) out.push({p:1, lv:"bad", ic:"🎯", tx:`<b>${esc(r.c)}</b> estourou o orçamento: ${brl(r.v)} de ${brl(b)}.`, gofin:1});
+    else if (S.dia >= 7 && r.proj > b*1.05) out.push({p:2, lv:"warn", ic:"🎯", tx:`<b>${esc(r.c)}</b>: no ritmo atual vai a ${brl(r.proj)}, acima do teto de ${brl(b)}. Restam ${brl(b-r.v)} no mês.`, gofin:1}); }
   if (S) for (const r of S.rec){ if (r.esteMes) continue; const d = diffDays(t, r.proxima); if (d >= 0 && d <= 3) out.push({p:3, lv:"", ic:"🔁", tx:`<b>${esc(r.desc)}</b> (~${brl(r.media)}) deve cair ${d===0?"hoje":`em ${d} dia${d>1?"s":""}`}.`}); }
   if (incItems().some(i=>Number(i.amount)>0) && finance){ const L = livreCalc(); if (L.liv >= 0 && L.padrao && L.perDay < L.padrao*0.7) out.push({p:2, lv:"warn", ic:"🎯", tx:`Até ${L.ni?esc(L.ni.name):"a próxima entrada"} dá para gastar <b>${brl(L.perDay)}/dia</b>, abaixo do seu padrão (~${brl(L.padrao)}/dia). Segure as compras no cartão.`}); }
   const b = holidayBlocks(t, 1)[0];
@@ -677,7 +694,8 @@ function renderInsights(el, max){
     x.planDay?`<button class="btn ghost sm" data-plan="${esc(x.planDay)}">Planejar</button>`:
     x.open?`<button class="btn ghost sm" data-open="${x.open}">Ver</button>`:
     x.incomes?`<button class="btn ghost sm" data-incomes="1">💰</button>`:
-    x.mkgoal?`<button class="btn sm" data-mkgoal="1">Criar</button>`:""}</div>`).join("") +
+    x.mkgoal?`<button class="btn sm" data-mkgoal="1">Criar</button>`:
+    x.gofin?`<button class="btn ghost sm" data-gofin="1">Ver</button>`:""}</div>`).join("") +
     (L.length > max ? `<div style="font-size:12px;color:var(--mut);text-align:center">+ ${L.length-max} alerta${L.length-max>1?"s":""}</div>` : "");
 }
 
@@ -703,13 +721,6 @@ function renderHoje(){
   $("hojeSteps").innerHTML = steps.length ? steps.map(({g,m}) => `<div class="act"><button class="chk" data-step="${g.id}|${m.id}">✓</button><span class="t" data-open="${g.id}" style="cursor:pointer">${esc(m.text)}<small>${AREAS[g.area]?.e||""} ${esc(g.title)} · ${(g.milestones||[]).filter(x=>x.done).length}/${g.milestones.length}</small></span></div>`).join("") : `<div style="color:var(--mut);font-size:13px">Sem etapas pendentes.</div>`;
   const nums = goals.filter(g=>g.type==="numeric" && calc(g).status!=="concluida");
   $("hojeNums").innerHTML = nums.length ? nums.map(g => `<div class="numrow"><span class="t">${esc(g.title)}<small>${esc(calc(g).label)}</small></span><input type="number" inputmode="decimal" step="any" placeholder="novo valor" id="qn-${g.id}"><button class="btn sm" data-qnum="${g.id}">Salvar</button></div>`).join("") : `<div style="color:var(--mut);font-size:13px">Sem metas numéricas.</div>`;
-  if (finance && finance.accounts){ $("hojeBalCard").hidden = false; const tot = finance.accounts.filter(a=>a.type!=="CREDIT").reduce((s,a)=>s+Number(a.balance||0),0), cr = finance.accounts.filter(a=>a.type==="CREDIT").reduce((s,a)=>s+Number(a.balance||0),0);
-    const nbs = cards().map(a=>({a, nb: nextBill(a)})).filter(x=>x.nb);
-    $("hojeBal").innerHTML = `<div class="bal-row"><span>Em conta</span><b style="color:var(--ok)">${brl(tot)}</b></div>` +
-      (nbs.length ? nbs.map(({a,nb})=>`<div class="bal-row"><span>💳 ${esc(a.institution)}<br><small style="color:var(--mut)">vence ${fmtDate(nb.due)}${nb.real?"":" · estimada"}</small></span><b style="color:var(--bad)">${brl(nb.amount)}</b></div>`).join("") + commitHtml()
-                  : `<div class="bal-row"><span>Limite usado nos cartões</span><b style="color:var(--bad)">${brl(cr)}</b></div>`) +
-      `<div style="font-size:11px;color:var(--mut);margin-top:6px">Faturas mês a mês na aba Metas</div>`; }
-  else $("hojeBalCard").hidden = true;
 }
 
 /* ============ REVISÃO SEMANAL ============ */
@@ -761,12 +772,12 @@ function openMenu(){
 }
 $("btnPlus").onclick = openPlus;
 $("btnMenu").onclick = openMenu;
-[$("btnReview"), $("btnReview2"), $("btnReview3")].forEach(b => b.onclick = openReview);
+[$("btnReview"), $("btnReview2")].filter(Boolean).forEach(b => b.onclick = openReview);
 
 /* ============ CACHE LOCAL (abre instantâneo) ============ */
 const CACHE_KEY = "pm-cache-v1";
 let userName = "";
-function saveCache(){ if (LOCAL) return; try { localStorage.setItem(CACHE_KEY, JSON.stringify({goals, actions, finance, incomes, spending, fixed, catRules, robotStatus, userName, at: Date.now()})); } catch {} }
+function saveCache(){ if (LOCAL) return; try { localStorage.setItem(CACHE_KEY, JSON.stringify({goals, actions, finance, incomes, spending, fixed, catRules, robotStatus, budgets, userName, at: Date.now()})); } catch {} }
 function loadCache(){ try { return JSON.parse(localStorage.getItem(CACHE_KEY)); } catch { return null; } }
 function clearCache(){ try { localStorage.removeItem(CACHE_KEY); } catch {} }
 
@@ -809,7 +820,7 @@ function tileHtml(){
   const L = livreCalc(), col = L.liv >= 0 ? (L.padrao && L.perDay < L.padrao ? "var(--warn)" : "var(--ok)") : "var(--bad)";
   return `<div><div class="lbl">Pode gastar hoje</div><div class="big" style="color:${col}">${brl(L.perDay)}<small>/dia</small></div>
     <div class="sub">${L.liv>=0?`${brl(L.liv)} livres`:L.min.bal<0?`Faltam ${brl(-L.min.bal)} para as faturas`:`Só ${brl(L.min.bal)} de folga, menos que a parcela da reserva`}${L.ni?` até ${esc(L.ni.name)} (${fmtDate(L.ni.date)}, ${L.days} dia${L.days>1?"s":""})`:""}${L.res>0?` · já separando ${brl(L.res)} para a reserva`:""}${L.padrao?`<br>Seu padrão de compras novas no cartão: ~${brl(L.padrao)}/dia`:""}</div></div>
-    <button class="btn ghost sm" data-incomes="1">💰</button>`;
+    <button class="btn ghost sm" data-gofin="1">Finanças ›</button>`;
 }
 const CAT_LIST = ["Mercado","Comer fora e delivery","Transporte","Casa e contas","Assinaturas digitais","Compras","Saúde e bem-estar","Educação","Lazer e viagens","Pix e transferências","Boletos","Taxas e juros","Empréstimos","Seguros","Apostas","Pensão","Doações","Outros","Ignorar"];
 function catOf(it){ const R = catRules || {}; return (R.byId||{})[it.id] || (R.byKey||{})[it.k] || it.g0; }
@@ -837,7 +848,7 @@ const CAT_COLORS = {"Mercado":"#2fbf71","Comer fora e delivery":"#f2b33d","Trans
 const catCol = c => CAT_COLORS[c] || "#5d6b85";
 function renderSpend(){
   const S = spendInfo(), card = $("spendCard");
-  card.hidden = !S; $("hojeSpendCard").hidden = !S; if (!S) return;
+  card.hidden = !S; if (!S) return;
   const mes = parse(S.cur.ym+"-01").toLocaleDateString("pt-BR",{month:"long"});
   const dif = S.avg ? (S.ritmo/S.avg-1)*100 : 0;
   const head = `<span>Em ${mes}: <b>${brl(S.cur.total)}</b></span>${S.isCur?`<span>No ritmo atual fecha em <b style="color:${dif>10?"var(--bad)":dif<-5?"var(--ok)":"var(--txt)"}">${brl(S.ritmo)}</b></span>`:""}${S.avg?`<span>Média 3 meses: <b>${brl(S.avg)}</b>${S.isCur?` (${dif>=0?"+":""}${Math.round(dif)}%)`:""}</span>`:""}`;
@@ -846,18 +857,18 @@ function renderSpend(){
   if (charts.spend) charts.spend.destroy();
   charts.spend = new Chart($("chSpend"), {type:"doughnut", data:{labels: top.map(r=>r.c), datasets:[{data: top.map(r=>r.v), backgroundColor: top.map(r=>catCol(r.c)), borderColor:"#121826", borderWidth:2}]},
     options:{maintainAspectRatio:false, cutout:"62%", plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.label}: ${brl(c.raw)}`}}}}});
-  const mx = Math.max(1, ...S.rows.map(r=>Math.max(r.proj, r.a)));
+  const BG = (budgets && budgets.byCat) || {};
+  const mx = Math.max(1, ...S.rows.map(r=>Math.max(r.proj, r.a, Number(BG[r.c]||0))));
   $("spendSide").innerHTML = S.rows.slice(0,8).map(r => { const d = r.a ? (r.proj/r.a-1)*100 : null;
     return `<div class="cat-row" data-cat="${esc(r.c)}" style="cursor:pointer"><span><span style="color:${catCol(r.c)}">●</span> ${esc(r.c)}${d!==null && S.isCur && Math.abs(d)>=15 ? `<span class="dl" style="color:${d>0?"var(--bad)":"var(--ok)"}">${d>0?"▲":"▼"} ${Math.round(Math.abs(d))}%</span>`:""}</span><b>${brl(r.v)}</b>
-      <div class="bar" title="média ${brl(r.a)}"><i style="width:${r.v/mx*100}%;background:${catCol(r.c)}"></i></div></div>`; }).join("") +
+      ${BG[r.c] ? (() => { const b = Number(BG[r.c]), pc = r.v/b*100, over = r.v > b, risk = !over && r.proj > b;
+        return `<div class="bar" style="height:7px"><i style="width:${Math.min(100,pc)}%;background:${over?"var(--bad)":risk?"var(--warn)":catCol(r.c)}"></i></div>
+        <small style="grid-column:1/-1;color:${over?"var(--bad)":risk?"var(--warn)":"var(--mut)"};font-size:11px">${over?`estourou ${brl(r.v-b)} do orçamento de ${brl(b)}`:`${Math.round(pc)}% de ${brl(b)}${risk?` · no ritmo vai a ${brl(r.proj)}`:` · restam ${brl(b-r.v)}`}`}</small>`; })()
+      : `<div class="bar" title="média ${brl(r.a)}"><i style="width:${r.v/mx*100}%;background:${catCol(r.c)}"></i></div>`}</div>`; }).join("") +
     `<div style="font-size:11px;color:var(--mut);margin-top:6px">▲▼ = projeção do mês contra a média dos 3 meses anteriores. Toque numa categoria para ver as compras e corrigir.</div>`;
   $("spendRec").innerHTML = S.rec.length ? `<div class="sec" style="margin-top:12px"><h5 style="margin:0 0 4px;font-size:12px;color:var(--mut);text-transform:uppercase">🔁 Cobranças recorrentes · ~${brl(S.recTot)}/mês</h5>` +
     S.rec.slice(0,10).map(r=>`<div class="rec-row"><span>${esc(r.desc)}<br><small>${esc(r.cat)} · ${esc(r.origem||"")} · ${r.meses} meses seguidos</small></span><span style="text-align:right"><b>${brl(r.media)}</b><br><small>${r.esteMes?"✓ já veio este mês":r.proxima<today()?`<span style="color:var(--warn)">não veio ainda (era ~${fmtDate(r.proxima)})</span>`:`próx. ~${fmtDate(r.proxima)}`}</small></span></div>`).join("") + `</div>` : "";
   const t5 = top.slice(0,3);
-  $("hojeSpend").innerHTML = `<div class="bal-row"><span>Gasto em ${mes}</span><b>${brl(S.cur.total)}</b></div>` +
-    (S.isCur && S.avg ? `<div class="bal-row"><span>No ritmo atual</span><b style="color:${dif>10?"var(--bad)":"var(--txt)"}">${brl(S.ritmo)} <small style="color:var(--mut);font-weight:500">(${dif>=0?"+":""}${Math.round(dif)}% da média)</small></b></div>` : "") +
-    t5.map(r=>`<div class="bal-row"><span><span style="color:${catCol(r.c)}">●</span> ${esc(r.c)}</span><b>${brl(r.v)}</b></div>`).join("") +
-    (S.rec.length ? `<div style="font-size:12px;color:var(--mut);margin-top:6px">🔁 ${S.rec.length} recorrentes · ~${brl(S.recTot)}/mês</div>` : "");
 }
 function openCat(cat, ym){
   const yms = (spending.months||[]).map(m=>m.ym); ym = ym || yms[yms.length-1];
@@ -879,6 +890,133 @@ function openCat(cat, ym){
     toast(`Movido para ${sel.value}`); render(); openCat(cat, ym); });
   $("catClose").onclick = closeModal;
   $("ov").classList.add("show");
+}
+function openBudgets(){
+  const S = spendInfo(), BG = {...((budgets && budgets.byCat) || {})};
+  const cats = CAT_LIST.filter(c => c !== "Ignorar");
+  const avgOf = c => S ? (S.rows.find(r=>r.c===c)||{}).a || 0 : 0;
+  const sug = c => Math.ceil(avgOf(c)*0.9/10)*10;
+  const draw = () => { $("modal").innerHTML = `<h2>🎯 Orçamento por categoria</h2><div class="sub">Teto por mês. Deixe vazio para não acompanhar. A sugestão é 10% abaixo da sua média dos últimos 3 meses.</div>
+    <div style="max-height:55vh;overflow:auto">${cats.map(c=>`<div class="bill-row" style="align-items:center"><span><span style="color:${catCol(c)}">●</span> ${c}<br><small style="color:var(--mut)">média ${brl(avgOf(c))}</small></span>
+      <input class="bud" data-c="${c}" type="number" inputmode="decimal" min="0" step="10" style="width:110px" placeholder="${sug(c)||"—"}" value="${BG[c]||""}"></div>`).join("")}</div>
+    <div class="actions"><button class="btn ghost" id="budSug">Usar sugestões</button><button class="btn ghost" id="budCancel">Cancelar</button><button class="btn" id="budSave">Salvar</button></div>`;
+    $("budSug").onclick = () => { document.querySelectorAll(".bud").forEach(i => { if (!i.value && sug(i.dataset.c) > 0) i.value = sug(i.dataset.c); }); };
+    $("budCancel").onclick = closeModal;
+    $("budSave").onclick = async () => { const by = {}; document.querySelectorAll(".bud").forEach(i => { const v = parseFloat(i.value); if (v > 0) by[i.dataset.c] = v; });
+      await store.save("finance", {id:"budgets", byCat:by, updatedAt:new Date().toISOString()}); closeModal(); toast("🎯 Orçamentos salvos. Bon courage !"); };
+  };
+  draw(); $("ov").classList.add("show");
+}
+function renderFin(){
+  if (tab !== "fin") return;
+  const has = finance && finance.accounts;
+  $("tileFin").innerHTML = tileHtml().replace('<button class="btn ghost sm" data-gofin="1">Finanças ›</button>', '<button class="btn ghost sm" data-incomes="1">💰 Salário</button>') ||
+    `<div class="sub">Conecte o banco (robô do Open Finance) para ver suas finanças aqui.</div>`;
+  if (!has){ $("finKpis").innerHTML = ""; return; }
+  const f = cashFlow(30), S = spendInfo();
+  $("finKpis").innerHTML = [
+    ["Em conta", brl(emConta()), linkedKeys().size ? "fora a reserva" : "contas correntes", "var(--ok)"],
+    ["Entradas 30 dias", brl(f.inc), incItems().some(i=>i.amount>0) ? "salário e adiantamento" : "cadastre o salário", "var(--acc)"],
+    ["Faturas 30 dias", brl(f.out), `${cards().length} cartões`, "var(--bad)"],
+    ["Contas fixas 30 dias", brl(f.fix), fixItems().length ? `${fixItems().length} cadastradas + recorrentes` : "cadastre as fixas", "var(--warn)"],
+    ["Gasto no mês", S ? brl(S.cur.total) : "—", S && S.avg ? `média ${brl(S.avg)}` : "", "var(--txt)"]
+  ].map(([l,v,s,c]) => `<div class="kpi"><div class="l">${l}</div><div class="v" style="color:${c};font-size:22px">${v}</div><div class="s">${s}</div></div>`).join("");
+  renderFlowChart(); renderRaise(); renderFlowLists();
+}
+function flowSeries(days, sim, novos){
+  const t = today(), f = cashFlow(days, false, sim); let bal = emConta(), i = 0; const pts = [];
+  const nvMonthly = novos ? avgNovosMes() : 0;
+  for (let k = 0; k <= days; k++){ const d = addDays(t, k);
+    while (i < f.ev.length && f.ev[i].date <= d){ bal += f.ev[i].v; i++; }
+    pts.push({d, v: Math.round(bal*100)/100}); }
+  return pts;
+}
+function renderFlowChart(){
+  const has = incItems().some(i=>Number(i.amount)>0);
+  const base = flowSeries(60, false), R = raiseCfg(), simOn = R && Number(R.net) > 0 && !R.from && incMonthly() > 0;
+  const sim = simOn ? flowSeries(60, true) : null;
+  const min = base.reduce((m,p)=>p.v<m.v?p:m, base[0]), end = base[base.length-1];
+  const neg = base.filter(p=>p.v<0).length;
+  $("flowHead").innerHTML = `<span>Ponto mais baixo: <b style="color:${min.v<0?"var(--bad)":"var(--ok)"}">${brl(min.v)}</b> em ${fmtDate(min.d)}</span><span>Em 60 dias: <b>${brl(end.v)}</b></span>` +
+    (neg ? `<span style="color:var(--bad)">${neg} dia${neg>1?"s":""} no vermelho</span>` : `<span style="color:var(--ok)">nenhum dia no vermelho</span>`) +
+    (sim ? `<span>Com aumento: <b style="color:var(--acc)">${brl(sim[sim.length-1].v)}</b> em 60 dias</span>` : "") + (has ? "" : `<span style="color:var(--warn)">sem salário cadastrado: só saídas</span>`);
+  const lbl = base.map(p=>p.d.slice(8,10)+"/"+p.d.slice(5,7));
+  const nvDay = avgNovosMes()/30.4, pat = base.map((p,k)=>Math.round((p.v - nvDay*k)*100)/100);
+  if (charts.flow) charts.flow.destroy();
+  charts.flow = new Chart($("chFlow"), {type:"line", data:{labels:lbl, datasets:[
+      {label:"Saldo projetado", data:base.map(p=>p.v), borderColor:"#6d8bff", backgroundColor:"#6d8bff22", fill:{target:{value:0}, above:"#6d8bff14", below:"#ef5b5b33"}, stepped:true, pointRadius:0, borderWidth:2},
+      ...(nvDay>0 ? [{label:"Com compras de costume", data:pat, borderColor:"#8b97b0", borderDash:[2,3], pointRadius:0, borderWidth:1, stepped:true, fill:false}] : []),
+      ...(sim ? [{label:"Com aumento (simulação)", data:sim.map(p=>p.v), borderColor:"#2fbf71", borderDash:[6,4], pointRadius:0, borderWidth:2, stepped:true, fill:false}] : [])]},
+    options:{maintainAspectRatio:false, interaction:{mode:"index", intersect:false},
+      scales:{y:{grid:{color:c=>c.tick.value===0?"#ef5b5b88":"#ffffff10"}, ticks:{callback:v=>brl(v).replace(",00","")}}, x:{grid:{display:false}, ticks:{maxTicksLimit:10}}},
+      plugins:{legend:{labels:{boxWidth:10,usePointStyle:true}}, tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${brl(c.raw)}`,
+        afterBody: items => { const d = base[items[0].dataIndex].d; const ev = cashFlow(60).ev.filter(e=>e.date===d); return ev.map(e=>`${e.tx}: ${brl(e.v)}`); }}}}}});
+}
+function renderRaise(){
+  const R = raiseCfg() || {}, cur = incMonthly(), B = $("raiseBox");
+  if (!(cur > 0)){ B.innerHTML = `<div class="sub" style="font-size:13px;color:var(--mut)">Primeiro cadastre o salário atual (adiantamento + salário) — o plano compara o novo valor com ele.</div><button class="btn sm" data-incomes="1" style="margin-top:8px">💰 Cadastrar salário</button>`; return; }
+  const net = Number(R.net||0), extra = net - cur, sp = R.split || {aperto:50, reserva:30, dia:20};
+  let h = `<div class="bill-row"><span>Hoje entra por mês</span><b>${brl(cur)}</b></div>`;
+  if (net > 0){
+    const f60 = cashFlow(60), deficit = Math.max(0, -f60.min.bal);
+    const rg = reserveGoals()[0], falta = rg ? Math.max(0, Number(rg.numeric.target||0) - Number(rg.numeric.current||0)) : 0;
+    const aM = extra*sp.aperto/100, rM = extra*sp.reserva/100, dM = extra*sp.dia/100;
+    const mesesAperto = deficit > 0 && aM > 0 ? Math.ceil(deficit/aM) : 0;
+    const mesesRes = falta > 0 && (rM + (mesesAperto ? 0 : aM)) > 0 ? Math.ceil(falta/(rM + (deficit>0 ? 0 : aM))) : 0;
+    h += `<div class="bill-row"><span>Com o aumento (líquido)</span><b style="color:var(--ok)">${brl(net)}</b></div>
+      <div class="bill-row"><span>Dinheiro novo por mês</span><b style="color:${extra>0?"var(--ok)":"var(--bad)"}">${extra>=0?"+":""}${brl(extra)}</b></div>
+      <div class="bill-row"><span>${R.from ? `Vale a partir de ${fmtDate(R.from)}` : "Sem data: aparece como simulação no gráfico"}</span><span></span></div>`;
+    if (extra > 0) h += `<div class="commit" style="margin-top:8px"><b>Para onde vai o dinheiro novo</b><br>
+      🧯 Sair do aperto: <b>${brl(aM)}</b>/mês (${sp.aperto}%) ${deficit>0?`→ cobre o buraco de ${brl(deficit)} em <b>~${mesesAperto} ${mesesAperto>1?"meses":"mês"}</b>`:"→ sem aperto projetado: vai para a reserva"}<br>
+      🛟 Reserva: <b>${brl(rM)}</b>/mês (${sp.reserva}%) ${rg ? (mesesRes ? `→ ${brl(falta)} que faltam em <b>~${mesesRes} meses</b>${rg.deadline?` (prazo da meta: ${fmtDate(rg.deadline)})`:""}` : "") : "→ crie a meta de reserva"}<br>
+      ☕ Dia a dia: <b>${brl(dM)}</b>/mês (${sp.dia}%) → <b>+${brl(dM/30.4)}/dia</b> no "pode gastar"</div>`;
+  } else h += `<div style="font-size:13px;color:var(--mut);margin-top:6px">Informe o novo salário para ver o efeito em cada meta.</div>`;
+  B.innerHTML = h + `<button class="btn ghost sm" data-raise="1" style="margin-top:10px">${net>0?"✏️ Ajustar plano":"🚀 Simular aumento"}</button>`;
+}
+function openRaise(){
+  const R = {net:0, bruto:4500, from:"", split:{aperto:50, reserva:30, dia:20}, ...(raiseCfg()||{})};
+  if (!R.net) R.net = Math.round((liquidoEstimado(R.bruto)||0)*100)/100;
+  $("modal").innerHTML = `<h2>🚀 Plano do aumento</h2><div class="sub">O painel trabalha com o que <b>cai na conta</b>. Até R$ 5 mil não há IR; o INSS 2026 é descontado por faixa.</div>
+    <div class="f"><label>Salário bruto novo (R$)</label><input id="rBruto" type="number" inputmode="decimal" step="50" value="${R.bruto||""}"></div>
+    <div class="f"><label>Líquido por mês — adiantamento + salário (R$)</label><input id="rNet" type="number" inputmode="decimal" step="10" value="${R.net||""}">
+      <div id="rHint" style="font-size:12px;color:var(--mut);margin-top:4px"></div></div>
+    <div class="f"><label>Vale a partir de (deixe vazio enquanto não tiver data)</label><input id="rFrom" type="date" value="${R.from||""}"></div>
+    <div class="f"><label>Divisão do dinheiro novo</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+        <div><small>🧯 Aperto %</small><input id="sA" type="number" min="0" max="100" value="${R.split.aperto}"></div>
+        <div><small>🛟 Reserva %</small><input id="sR" type="number" min="0" max="100" value="${R.split.reserva}"></div>
+        <div><small>☕ Dia a dia %</small><input id="sD" type="number" min="0" max="100" value="${R.split.dia}"></div></div>
+      <div id="sHint" style="font-size:12px;color:var(--mut);margin-top:4px"></div></div>
+    <div class="actions">${raiseCfg()?`<button class="btn ghost" id="rDel">Remover</button>`:""}<button class="btn ghost" id="rCancel">Cancelar</button><button class="btn" id="rSave">Salvar</button></div>`;
+  const hint = () => { const b = parseFloat($("rBruto").value)||0, l = liquidoEstimado(b);
+    $("rHint").innerHTML = b ? (l!==null ? `Estimativa: ${brl(b)} − INSS ${brl(inss2026(b))} = <b>${brl(l)}</b> (sem vale-transporte, plano ou outros descontos — ajuste se o holerite vier diferente).` : "Acima de R$ 5 mil entra IR: digite o líquido do holerite.") : "";
+    const sum = ["sA","sR","sD"].reduce((s,k)=>s+(parseFloat($(k).value)||0),0); $("sHint").innerHTML = sum===100 ? "" : `<span style="color:var(--warn)">A soma está em ${sum}% — ajuste para 100%.</span>`; };
+  $("rBruto").oninput = () => { const l = liquidoEstimado(parseFloat($("rBruto").value)||0); if (l !== null) $("rNet").value = Math.round(l*100)/100; hint(); };
+  ["sA","sR","sD"].forEach(k => $(k).oninput = hint); hint();
+  $("rCancel").onclick = closeModal;
+  if ($("rDel")) $("rDel").onclick = async () => { const I = {...(incomes||{id:"incomes", items:[]})}; delete I.raise; I.id = "incomes"; await store.save("finance", I); closeModal(); toast("Plano removido"); };
+  $("rSave").onclick = async () => { const split = {aperto:parseFloat($("sA").value)||0, reserva:parseFloat($("sR").value)||0, dia:parseFloat($("sD").value)||0};
+    if (split.aperto+split.reserva+split.dia !== 100) return toast("A divisão precisa somar 100%");
+    const net = parseFloat($("rNet").value)||0; if (!(net > 0)) return toast("Informe o líquido");
+    const I = {...(incomes||{items:[]}), id:"incomes", raise:{bruto:parseFloat($("rBruto").value)||0, net, from:$("rFrom").value||"", split}};
+    await store.save("finance", I); closeModal(); toast("🚀 Plano salvo. Allez !"); };
+  $("ov").classList.add("show");
+}
+function renderFlowLists(){
+  const t = today(), end = addDays(t, 45);
+  const inc = incomesBetween(addDays(t,1), end), fx = fixedBetween(t, end);
+  const row = (ic, x, col) => `<div class="bill-row"><span>${ic} ${esc(x.name)}<br><small style="color:var(--mut)">${fmtDate(x.date)}${x.src==="auto"?" · recorrente detectado":""}</small></span><b style="color:${col}">${brl(x.amount)}</b></div>`;
+  $("flowLists").innerHTML = `<div class="bills-wrap" style="align-items:start"><div><h5 style="margin:0 0 4px;font-size:12px;color:var(--mut);text-transform:uppercase">Entram (45 dias)</h5>${inc.map(x=>row("💰",x,"var(--ok)")).join("") || `<div style="color:var(--mut);font-size:13px">Nada cadastrado.</div>`}
+      <button class="btn ghost sm" data-incomes="1" style="margin-top:8px">💰 Editar entradas</button></div>
+    <div><h5 style="margin:0 0 4px;font-size:12px;color:var(--mut);text-transform:uppercase">Saem fora do cartão (45 dias)</h5>${fx.map(x=>row("📌",x,"var(--bad)")).join("") || `<div style="color:var(--mut);font-size:13px">Nenhuma conta fixa ainda.</div>`}
+      <button class="btn ghost sm" data-fixed="1" style="margin-top:8px">📌 Contas fixas</button></div></div>`;
+}
+function finMiniHtml(){
+  if (!finance || !finance.accounts) return `<div style="color:var(--mut);font-size:13px">Ainda não conectado.</div>`;
+  const L = incItems().some(i=>Number(i.amount)>0) ? livreCalc() : null, f = cashFlow(30);
+  return (L ? `<div class="bal-row"><span>Pode gastar hoje</span><b style="color:${L.liv>=0?"var(--ok)":"var(--bad)"}">${brl(L.perDay)}/dia</b></div>` : "") +
+    `<div class="bal-row"><span>Em conta</span><b>${brl(emConta())}</b></div><div class="bal-row"><span>Faturas em 30 dias</span><b style="color:var(--bad)">${brl(f.out)}</b></div>` +
+    `<button class="btn ghost sm" data-gofin="1" style="margin-top:8px">Abrir Finanças ›</button>`;
 }
 function recurringOn(d){ return (spending && spending.recurring || []).filter(r => !r.esteMes || r.proxima > today() ? r.proxima === d : false); }
 /* Metas que se atualizam sozinhas a partir do saldo das contas */
@@ -910,18 +1048,28 @@ function incDateIn(it, ym){
   for (let i=0; i<7 && isOff(ds); i++) ds = addDays(ds,-1);   /* caiu em feriado/fim de semana: antecipa */
   return ds;
 }
-function incomesBetween(from, to){
-  const out = []; let ym = from.slice(0,7);
+/* ============ AUMENTO (real ou simulado) ============ */
+function incMonthly(){ return incItems().reduce((s,i)=>s+Number(i.amount||0),0); }
+function raiseCfg(){ return (incomes && incomes.raise) || null; }
+function nextMonthStart(){ const t = today(); const [y,m] = t.split("-").map(Number); return m===12 ? `${y+1}-01-01` : `${y}-${String(m+1).padStart(2,"0")}-01`; }
+/* sim=true: aplica o aumento a partir do mês que vem, mesmo sem data confirmada */
+function raiseFrom(sim){ const R = raiseCfg(); if (!R || !(Number(R.net) > 0) || !(incMonthly() > 0)) return null; return R.from || (sim ? nextMonthStart() : null); }
+function raiseFactor(){ const R = raiseCfg(); return R && incMonthly() > 0 ? Number(R.net)/incMonthly() : 1; }
+/* INSS 2026 (progressivo) e IR zerado até R$ 5 mil — para estimar o líquido do novo salário */
+function inss2026(b){ const F = [[1621,0.075],[2902.84,0.09],[4354.27,0.12],[8475.55,0.14]]; let prev = 0, v = 0; for (const [lim,a] of F){ if (b > prev) v += (Math.min(b,lim)-prev)*a; prev = lim; } return v; }
+function liquidoEstimado(bruto){ return bruto <= 5000 ? bruto - inss2026(bruto) : null; }
+function incomesBetween(from, to, sim=false){
+  const out = []; let ym = from.slice(0,7); const rf = raiseFrom(sim), fac = raiseFactor();
   while (ym <= to.slice(0,7)){
-    for (const it of incItems()) if (Number(it.amount) > 0){ const d = incDateIn(it, ym); if (d >= from && d <= to) out.push({date:d, name:it.name, amount:Number(it.amount)}); }
+    for (const it of incItems()) if (Number(it.amount) > 0){ const d = incDateIn(it, ym); if (d >= from && d <= to) out.push({date:d, name:it.name + (rf && d >= rf ? " (com aumento)" : ""), amount:Number(it.amount) * (rf && d >= rf ? fac : 1)}); }
     const [y,m] = ym.split("-").map(Number); ym = m===12 ? `${y+1}-01` : `${y}-${String(m+1).padStart(2,"0")}`;
   }
   return out.sort((a,b)=>a.date.localeCompare(b.date));
 }
 /* Fluxo projetado: saldo hoje + entradas - faturas, dia a dia. Entrada de hoje já conta no saldo. */
-function cashFlow(days, novos=false){
+function cashFlow(days, novos=false, sim=false){
   const t = today(), end = addDays(t, days);
-  const ev = [...incomesBetween(addDays(t,1), end).map(x=>({date:x.date, v:x.amount, k:0, tx:"💰 "+x.name})),
+  const ev = [...incomesBetween(addDays(t,1), end, sim).map(x=>({date:x.date, v:x.amount, k:0, tx:"💰 "+x.name})),
               ...allBills().filter(b=>b.due>=t && b.due<=end).map(b=>({date:b.due, v:-(Number(b.amount||0) + (novos ? Number(b.novos||0) : 0)), k:1, tx:"💳 "+b.inst})),
               ...fixedBetween(t, end).map(x=>({date:x.date, v:-x.amount, k:1, fx:1, tx:"📌 "+x.name}))]
     .sort((a,b)=>a.date.localeCompare(b.date) || a.k-b.k);
@@ -1020,14 +1168,14 @@ function renderBalance(){
   const bank = finance.accounts.filter(a=>a.type!=="CREDIT"), cards = finance.accounts.filter(a=>a.type==="CREDIT");
   const total = bank.reduce((s,a)=>s+Number(a.balance||0),0);
   const upd = finance.updatedAt ? new Date(finance.updatedAt).toLocaleString("pt-BR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
-  const LK = linkedKeys(), th = tileHtml();
-  B.innerHTML = (th ? `<div class="spend-tile" style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line)">${th}</div>` : "") + `<div class="bal-total">${brl(total)}</div><div style="font-size:11px;color:var(--mut);margin-bottom:8px">em conta · atualizado ${upd}</div>` +
+  const LK = linkedKeys();
+  B.innerHTML = `<div class="bal-total">${brl(total)}</div><div style="font-size:11px;color:var(--mut);margin-bottom:8px">em conta · atualizado ${upd}</div>` +
     bank.map(a=>`<div class="bal-row"><span>${esc(a.institution||"")} · ${esc(a.name||"")}${LK.has(accKey(a))?` <small style="color:var(--acc)">🎯 reserva</small>`:""}</span><b>${brl(a.balance)}</b></div>`).join("") +
     cards.map(a=>{ const nb = nextBill(a);
       const sub = nb ? `fatura de ${fmtDate(nb.due)}${nb.real?"":" (estimada)"} · limite usado ${brl(a.balance)}${a.creditLimit?` de ${brl(a.creditLimit)}`:""}`
                      : `limite usado${a.creditLimit?` de ${brl(a.creditLimit)}`:""}${a.dueDate?` · vence ${fmtDate(a.dueDate)}`:""}`;
       return `<div class="bal-row"><span>💳 ${esc(a.institution||"")} · ${esc(a.name||"")}<br><small style="color:var(--mut)">${sub}</small></span><b style="color:var(--bad)">${brl(nb ? nb.amount : a.balance)}</b></div>`; }).join("") +
-    (allBills().length ? commitHtml() : "");
+    "";
 }
 
 function renderCal(){
@@ -1060,7 +1208,7 @@ function renderCal(){
   }).join("");
 }
 
-function switchTab(t){ tab = t; document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("on", b.dataset.tab===t)); $("viewHoje").hidden = t!=="hoje"; $("viewPainel").hidden = t!=="painel"; $("viewCal").hidden = t!=="cal"; try{ localStorage.setItem("pm-tab", t); }catch{} window.scrollTo(0,0); render(); }
+function switchTab(t){ tab = t; document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("on", b.dataset.tab===t)); $("viewHoje").hidden = t!=="hoje"; $("viewPainel").hidden = t!=="painel"; $("viewCal").hidden = t!=="cal"; $("viewFin").hidden = t!=="fin"; try{ localStorage.setItem("pm-tab", t); }catch{} window.scrollTo(0,0); render(); }
 document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 $("calPrev").onclick = () => { const d = parse(calMonth+"-01"); d.setMonth(d.getMonth()-1); calMonth = iso(d).slice(0,7); renderCal(); };
 $("calNext").onclick = () => { const d = parse(calMonth+"-01"); d.setMonth(d.getMonth()+1); calMonth = iso(d).slice(0,7); renderCal(); };
@@ -1129,7 +1277,8 @@ function render(){
     `<input id="q" placeholder="Buscar meta..." value="${esc(filt.q)}">`;
   $("q").oninput = e => { filt.q = e.target.value; renderGrid(list); };
   renderGrid(list);
-  renderNext7(); renderBalance(); renderBills(); renderSpend(); renderInsights($("insPainel"), 6);
+  renderNext7(); $("finMini").innerHTML = finMiniHtml(); renderInsights($("insPainel"), 6);
+  if (tab === "fin"){ renderBalance(); renderBills(); renderSpend(); renderFin(); }
   if (tab === "cal") renderCal();
   if (tab === "hoje") renderHoje();
   saveCache();
@@ -1157,13 +1306,16 @@ function renderGrid(list){
 
 /* ============ EVENTOS GLOBAIS ============ */
 document.addEventListener("click", async e => {
-  const t = e.target.closest("[data-check],[data-open],[data-fa],[data-fs],[data-calday],[data-actdone],[data-actedit],[data-newact],[data-plan],[data-planfor],[data-step],[data-qnum],[data-incomes],[data-fixed],[data-cat],[data-mkgoal],[data-fold]");
+  const t = e.target.closest("[data-check],[data-open],[data-fa],[data-fs],[data-calday],[data-actdone],[data-actedit],[data-newact],[data-plan],[data-planfor],[data-step],[data-qnum],[data-incomes],[data-fixed],[data-cat],[data-mkgoal],[data-fold],[data-gofin],[data-budgets],[data-raise]");
   if (!t) return;
   if (t.dataset.planfor){ openActionForm({id:uid(), title:"", date:today(), time:"", goalId:t.dataset.planfor, notes:"", done:false}); return; }
   if (t.dataset.step){ const [gid, mid] = t.dataset.step.split("|"); const g = goals.find(x=>x.id===gid); const m = g && g.milestones.find(x=>x.id===mid); if (m){ m.done = true; m.doneAt = today(); save(g); toast("✓ Etapa concluída. Bravo !"); } return; }
   if (t.dataset.qnum){ const g = goals.find(x=>x.id===t.dataset.qnum), inp = $("qn-"+t.dataset.qnum); const v = inp && inp.value; if (!g || v===""||isNaN(v)) return toast("Digite o valor atual"); g.numeric.current = Number(v); g.log = [...(g.log||[]), {date:today(), value:Number(v), note:"Registro rápido"}]; save(g); toast("Valor registrado 📈"); return; }
   if (t.dataset.incomes){ openIncomes(); return; }
   if (t.dataset.fixed){ openFlow("fixed"); return; }
+  if (t.dataset.gofin){ switchTab("fin"); return; }
+  if (t.dataset.budgets){ openBudgets(); return; }
+  if (t.dataset.raise){ openRaise(); return; }
   if (t.dataset.cat){ openCat(t.dataset.cat); return; }
   if (t.dataset.fold){ const k = t.dataset.fold, F = foldState(); F[k] = !F[k]; try { localStorage.setItem("pm-fold", JSON.stringify(F)); } catch {} applyFolds(); return; }
   if (t.dataset.mkgoal){ const ym = n => { const d = new Date(); d.setMonth(d.getMonth()+n); return d.toLocaleDateString("pt-BR",{month:"long"}); };
@@ -1326,7 +1478,7 @@ function drawDetail(){
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(()=>{});
 switchTab(tab);
 (async () => {
-  if (!LOCAL){ const c = loadCache(); if (c){ goals = c.goals||[]; actions = c.actions||[]; finance = c.finance||null; incomes = c.incomes||null; spending = c.spending||null; fixed = c.fixed||null; catRules = c.catRules||null; robotStatus = c.robotStatus||null; userName = c.userName||""; render(); } }
+  if (!LOCAL){ const c = loadCache(); if (c){ goals = c.goals||[]; actions = c.actions||[]; finance = c.finance||null; incomes = c.incomes||null; spending = c.spending||null; fixed = c.fixed||null; catRules = c.catRules||null; robotStatus = c.robotStatus||null; budgets = c.budgets||null; userName = c.userName||""; render(); } }
   if (LOCAL){
     $("banner").innerHTML = `<div class="banner">⚠️ <b>Modo local</b>: o Firebase ainda não foi configurado, então os dados ficam só neste navegador.</div>`;
     store = localStore();
@@ -1337,7 +1489,7 @@ switchTab(tab);
   store.subscribe("goals", list => { goals = list; render(); syncAuto(); if (openId && $("ov").classList.contains("show") && !$("fTitle")) drawDetail(); });
   store.subscribe("actions", list => { actions = list; render(); if ($("ov").classList.contains("show") && $("dayPanel")) openDay($("dayPanel").dataset.day); });
   store.subscribe("finance", list => { const by = id => list.find(x=>x.id===id) || null;
-    finance = by("balances"); incomes = by("incomes"); spending = by("spending"); fixed = by("fixed"); catRules = by("catRules"); robotStatus = by("robotStatus");
+    finance = by("balances"); incomes = by("incomes"); spending = by("spending"); fixed = by("fixed"); catRules = by("catRules"); robotStatus = by("robotStatus"); budgets = by("budgets");
     render(); syncAuto(); });
 })();
 </script>
