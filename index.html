@@ -974,10 +974,17 @@ function renderRaise(){
   B.innerHTML = h + `<button class="btn ghost sm" data-raise="1" style="margin-top:10px">${net>0?"✏️ Ajustar plano":"🚀 Simular aumento"}</button>`;
 }
 function openRaise(){
-  const R = {net:0, bruto:4500, from:"", split:{aperto:50, reserva:30, dia:20}, ...(raiseCfg()||{})};
-  if (!R.net) R.net = Math.round((liquidoEstimado(R.bruto)||0)*100)/100;
-  $("modal").innerHTML = `<h2>🚀 Plano do aumento</h2><div class="sub">O painel trabalha com o que <b>cai na conta</b>. Até R$ 5 mil não há IR; o INSS 2026 é descontado por faixa.</div>
+  const R = {net:0, bruto:4500, from:"", split:{aperto:50, reserva:30, dia:20}, payroll:{}, ...(raiseCfg()||{})};
+  const P0 = R.payroll || {};
+  if (!R.net) R.net = Math.round(((liquidoHolerite(R.bruto, P0)||{}).net||0)*100)/100;
+  $("modal").innerHTML = `<h2>🚀 Plano do aumento</h2><div class="sub">O painel trabalha com o que <b>cai na conta</b>. Até R$ 5 mil não há IR; o INSS 2026 é descontado por faixa. Preencha os descontos do holerite para a estimativa bater.</div>
     <div class="f"><label>Salário bruto novo (R$)</label><input id="rBruto" type="number" inputmode="decimal" step="50" value="${R.bruto||""}"></div>
+    <details ${P0.pensao||P0.outros||P0.consig?"open":""} style="margin:-4px 0 12px"><summary style="cursor:pointer;font-size:13px;color:var(--mut)">Descontos do seu holerite (para estimar o líquido)</summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">
+        <div><small>Pensão (% sobre bruto − INSS)</small><input id="pPens" type="number" inputmode="decimal" step="0.5" value="${P0.pensao||""}"></div>
+        <div><small>Outros fixos (plano, VR, VT…) R$</small><input id="pOut" type="number" inputmode="decimal" step="0.01" value="${P0.outros||""}"></div>
+        <div><small>Consignados: soma real das parcelas R$</small><input id="pCons" type="number" inputmode="decimal" step="0.01" value="${P0.consig||""}"></div>
+        <div><small>Margem consignável %</small><input id="pMarg" type="number" inputmode="decimal" step="1" value="${P0.margem||35}"></div></div></details>
     <div class="f"><label>Líquido por mês — adiantamento + salário (R$)</label><input id="rNet" type="number" inputmode="decimal" step="10" value="${R.net||""}">
       <div id="rHint" style="font-size:12px;color:var(--mut);margin-top:4px"></div></div>
     <div class="f"><label>Vale a partir de (deixe vazio enquanto não tiver data)</label><input id="rFrom" type="date" value="${R.from||""}"></div>
@@ -988,17 +995,20 @@ function openRaise(){
         <div><small>☕ Dia a dia %</small><input id="sD" type="number" min="0" max="100" value="${R.split.dia}"></div></div>
       <div id="sHint" style="font-size:12px;color:var(--mut);margin-top:4px"></div></div>
     <div class="actions">${raiseCfg()?`<button class="btn ghost" id="rDel">Remover</button>`:""}<button class="btn ghost" id="rCancel">Cancelar</button><button class="btn" id="rSave">Salvar</button></div>`;
-  const hint = () => { const b = parseFloat($("rBruto").value)||0, l = liquidoEstimado(b);
-    $("rHint").innerHTML = b ? (l!==null ? `Estimativa: ${brl(b)} − INSS ${brl(inss2026(b))} = <b>${brl(l)}</b> (sem vale-transporte, plano ou outros descontos — ajuste se o holerite vier diferente).` : "Acima de R$ 5 mil entra IR: digite o líquido do holerite.") : "";
+  const payroll = () => ({pensao: parseFloat($("pPens").value)||0, outros: parseFloat($("pOut").value)||0, consig: parseFloat($("pCons").value)||0, margem: parseFloat($("pMarg").value)||35});
+  const hint = () => { const b = parseFloat($("rBruto").value)||0, H = liquidoHolerite(b, payroll());
+    $("rHint").innerHTML = b ? (H ? `Estimativa: ${brl(b)} − INSS ${brl(H.inss)}${H.pens?` − pensão ${brl(H.pens)}`:""}${H.outros?` − outros ${brl(H.outros)}`:""}${H.cons?` − consignado ${brl(H.cons)}`:""} = <b>${brl(H.net)}</b>` +
+      (H.falta > 0 ? `<br><span style="color:var(--warn)">Consignado: margem de ${brl(H.margem)}; ${brl(H.falta)} das parcelas não cabem e ficam para pagar direto ao banco.</span>` : "") : "Acima de R$ 5 mil entra IR: digite o líquido do holerite.") : "";
     const sum = ["sA","sR","sD"].reduce((s,k)=>s+(parseFloat($(k).value)||0),0); $("sHint").innerHTML = sum===100 ? "" : `<span style="color:var(--warn)">A soma está em ${sum}% — ajuste para 100%.</span>`; };
-  $("rBruto").oninput = () => { const l = liquidoEstimado(parseFloat($("rBruto").value)||0); if (l !== null) $("rNet").value = Math.round(l*100)/100; hint(); };
+  const recalc = () => { const H = liquidoHolerite(parseFloat($("rBruto").value)||0, payroll()); if (H) $("rNet").value = Math.round(H.net*100)/100; hint(); };
+  ["rBruto","pPens","pOut","pCons","pMarg"].forEach(k => $(k).oninput = recalc);
   ["sA","sR","sD"].forEach(k => $(k).oninput = hint); hint();
   $("rCancel").onclick = closeModal;
   if ($("rDel")) $("rDel").onclick = async () => { const I = {...(incomes||{id:"incomes", items:[]})}; delete I.raise; I.id = "incomes"; await store.save("finance", I); closeModal(); toast("Plano removido"); };
   $("rSave").onclick = async () => { const split = {aperto:parseFloat($("sA").value)||0, reserva:parseFloat($("sR").value)||0, dia:parseFloat($("sD").value)||0};
     if (split.aperto+split.reserva+split.dia !== 100) return toast("A divisão precisa somar 100%");
     const net = parseFloat($("rNet").value)||0; if (!(net > 0)) return toast("Informe o líquido");
-    const I = {...(incomes||{items:[]}), id:"incomes", raise:{bruto:parseFloat($("rBruto").value)||0, net, from:$("rFrom").value||"", split}};
+    const I = {...(incomes||{items:[]}), id:"incomes", raise:{bruto:parseFloat($("rBruto").value)||0, net, from:$("rFrom").value||"", split, payroll: payroll()}};
     await store.save("finance", I); closeModal(); toast("🚀 Plano salvo. Allez !"); };
   $("ov").classList.add("show");
 }
@@ -1058,6 +1068,14 @@ function raiseFactor(){ const R = raiseCfg(); return R && incMonthly() > 0 ? Num
 /* INSS 2026 (progressivo) e IR zerado até R$ 5 mil — para estimar o líquido do novo salário */
 function inss2026(b){ const F = [[1621,0.075],[2902.84,0.09],[4354.27,0.12],[8475.55,0.14]]; let prev = 0, v = 0; for (const [lim,a] of F){ if (b > prev) v += (Math.min(b,lim)-prev)*a; prev = lim; } return v; }
 function liquidoEstimado(bruto){ return bruto <= 5000 ? bruto - inss2026(bruto) : null; }
+/* Líquido com os descontos do holerite: pensão sobre (bruto − INSS), descontos fixos e consignado limitado à margem (35% do disponível) */
+function liquidoHolerite(b, P){
+  P = P || {}; const inss = inss2026(b); if (b > 5000) return null;
+  const pens = (Number(P.pensao)||0)/100 * (b - inss), disp = b - inss - pens;
+  const margem = disp * (Number(P.margem)||35)/100, cons = Math.min(Number(P.consig)||0, margem);
+  const outros = Number(P.outros)||0;
+  return {inss, pens, disp, margem, cons, outros, net: b - inss - pens - outros - cons, falta: Math.max(0, (Number(P.consig)||0) - margem)};
+}
 function incomesBetween(from, to, sim=false){
   const out = []; let ym = from.slice(0,7); const rf = raiseFrom(sim), fac = raiseFactor();
   while (ym <= to.slice(0,7)){
