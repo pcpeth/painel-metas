@@ -104,21 +104,57 @@ def saidas_fixas(fixas, gastos, ini, fim, hoje):
     return sorted(out)
 
 
-def com_aumento(lista, itens, aumento):
-    """Aplica o aumento (só quando tem data confirmada) às entradas a partir daquela data."""
+FAIXAS_INSS = [(1621.00, 0.075), (2902.84, 0.09), (4354.27, 0.12), (8475.55, 0.14)]   # INSS 2026
+
+
+def inss(b):
+    v, ant = 0.0, 0.0
+    for lim, a in FAIXAS_INSS:
+        if b > ant:
+            v += (min(b, lim) - ant) * a
+        ant = lim
+    return v
+
+
+def liquido(bruto, P, ym):
+    """Líquido do holerite no mês ym: INSS, pensão sobre (bruto − INSS), fixos e consignados ativos até a margem."""
+    i = inss(bruto)
+    pens = float(P.get("pensao") or 0) / 100 * (bruto - i)
+    margem = (bruto - i - pens) * float(P.get("margem") or 35) / 100
+    cons = 0.0
+    for c in P.get("consigList") or []:
+        ate = c.get("ate")
+        if not ate or ym <= (date.fromisoformat(ate) - timedelta(days=10)).strftime("%Y-%m"):
+            cons += float(c.get("v") or 0)
+    return bruto - i - pens - float(P.get("outros") or 0) - min(cons, margem)
+
+
+def com_aumento(lista, itens, aumento, holerite=None, hoje=None):
+    """Ajusta as entradas mês a mês: consignados que acabam (holerite) e aumento com data confirmada."""
     atual = sum(float(i.get("amount") or 0) for i in itens)
-    if not aumento or not aumento.get("from") or not float(aumento.get("net") or 0) or not atual:
+    ini = date.fromisoformat(aumento["from"]) if aumento and aumento.get("from") else None
+    if holerite and float(holerite.get("bruto") or 0) > 0 and atual:
+        hoje = hoje or date.today()
+        base = liquido(float(holerite["bruto"]), holerite, hoje.strftime("%Y-%m"))
+        if base <= 0:
+            return lista
+        out = []
+        for d, n, v in lista:
+            b = float(aumento.get("bruto") or 0) if ini and d >= ini and float(aumento.get("bruto") or 0) <= 5000 else float(holerite["bruto"])
+            out.append((d, n, v * liquido(b, holerite, d.strftime("%Y-%m")) / base))
+        return out
+    if not ini or not float(aumento.get("net") or 0) or not atual:
         return lista
-    ini, fator = date.fromisoformat(aumento["from"]), float(aumento["net"]) / atual
+    fator = float(aumento["net"]) / atual
     return [(d, n, v * fator if d >= ini else v) for d, n, v in lista]
 
 
-def livre(accounts, itens, goals, hoje, fixas=None, gastos=None, aumento=None):
+def livre(accounts, itens, goals, hoje, fixas=None, gastos=None, aumento=None, holerite=None):
     ligadas = {(g.get("auto") or "")[4:] for g in goals if g.get("type") == "numeric" and (g.get("auto") or "").startswith("acc:")}
     saldo = sum(float(a.get("balance") or 0) for a in accounts
                 if a.get("type") != "CREDIT" and f"{a.get('institution')}|{a.get('name')}" not in ligadas)
     fim = hoje + timedelta(days=45)
-    ev = [(d, 0, v, "💰 " + n) for d, n, v in com_aumento(entradas(itens, hoje + timedelta(days=1), fim), itens, aumento)]
+    ev = [(d, 0, v, "💰 " + n) for d, n, v in com_aumento(entradas(itens, hoje + timedelta(days=1), fim), itens, aumento, holerite, hoje)]
     ev += [(d, 1, -v, "📌 " + n) for d, n, v in saidas_fixas(fixas, gastos, hoje, fim, hoje)]
     for a in accounts:
         if a.get("type") != "CREDIT":
@@ -156,8 +192,8 @@ def _streak(checks, hoje):
     return s
 
 
-def montar(accounts, gastos, goals, actions, itens, hoje, fixas=None, aumento=None):
-    L = livre(accounts, itens, goals, hoje, fixas, gastos, aumento)
+def montar(accounts, gastos, goals, actions, itens, hoje, fixas=None, aumento=None, holerite=None):
+    L = livre(accounts, itens, goals, hoje, fixas, gastos, aumento, holerite)
     linhas = []
     cor = "#2fbf71" if L["livre"] >= 0 else "#ef5b5b"
     topo = (f"<div style='font-size:13px;color:#8a94a8'>Pode gastar hoje</div>"
@@ -244,9 +280,9 @@ def talvez_enviar(db, uid, accounts, gastos, agora):
     actions = [d.to_dict() for d in base.collection("actions").stream()]
     inc = base.collection("finance").document("incomes").get()
     inc_d = (inc.to_dict() or {}) if inc.exists else {}
-    itens, aumento = inc_d.get("items", []), inc_d.get("raise")
+    itens, aumento, holerite = inc_d.get("items", []), inc_d.get("raise"), inc_d.get("payroll")
     fx = base.collection("finance").document("fixed").get()
-    assunto, html = montar(accounts, gastos, goals, actions, itens, hoje, (fx.to_dict() or {}) if fx.exists else {}, aumento)
+    assunto, html = montar(accounts, gastos, goals, actions, itens, hoje, (fx.to_dict() or {}) if fx.exists else {}, aumento, holerite)
     msg = MIMEMultipart("alternative")
     msg["Subject"], msg["From"], msg["To"] = assunto, f"Painel de Metas <{user}>", os.environ.get("EMAIL_TO", "").strip() or user
     msg.attach(MIMEText(html, "html", "utf-8"))
