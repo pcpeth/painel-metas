@@ -162,6 +162,11 @@ td.r{text-align:right}
 .tagest{font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;background:#2b3550;color:#aab6d3;margin-left:6px}
 .tagreal{font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;background:#163a28;color:var(--ok);margin-left:6px}
 .commit{background:var(--panel2);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;line-height:1.5}
+.commit .aperto{margin-top:6px;padding:6px 8px;border-radius:8px;background:rgba(239,91,91,.12);font-size:12.5px}
+.inc-row{display:grid;grid-template-columns:1.4fr 1.1fr .6fr 1.1fr auto;gap:6px;align-items:center;margin-top:8px}
+.inc-row input,.inc-row select{min-width:0;width:100%}
+.inc-row .in-next{grid-column:1/-1;color:var(--mut);font-size:11.5px;margin-top:-2px}
+@media(max-width:560px){.inc-row{grid-template-columns:1fr 1fr .7fr}.inc-row .in-amt{grid-column:1/3}}
 @media(max-width:1000px){.bills-wrap{grid-template-columns:1fr}}
 .legend{display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--mut);flex-wrap:wrap}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
@@ -470,7 +475,7 @@ document.getElementById("btnLogin").onclick = async () => {
 };
 
 /* ============ ESTADO E RENDER ============ */
-let goals = [], actions = [], finance = null;
+let goals = [], actions = [], finance = null, incomes = null;
 const $ = id => document.getElementById(id);
 let tab = (()=>{ try { return localStorage.getItem("pm-tab") || (matchMedia("(max-width:760px)").matches ? "hoje" : "painel"); } catch { return "painel"; } })(), calMonth = today().slice(0,7);
 
@@ -556,10 +561,11 @@ function openActionForm(a){
   setTimeout(()=>$("aTitle").focus(), 50);
 }
 function openDay(d){
-  const hs = holOn(d), dl = goals.filter(g=>g.deadline===d), as = actions.filter(a=>a.date===d).sort((x,y)=>(x.time||"").localeCompare(y.time||"")), bl = allBills().filter(b=>b.due===d);
+  const hs = holOn(d), dl = goals.filter(g=>g.deadline===d), as = actions.filter(a=>a.date===d).sort((x,y)=>(x.time||"").localeCompare(y.time||"")), bl = allBills().filter(b=>b.due===d), il = incomesBetween(d,d);
   $("modal").innerHTML = `<div id="dayPanel" data-day="${d}"><h2 style="text-transform:capitalize">${parse(d).toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</h2>
     <div class="sub">${hs.map(h=>`🏖️ ${esc(h.name)}${h.type==="facultativo"?" (ponto facultativo)":""}`).join(" · ") || (isWeekend(d)?"Fim de semana":"Dia útil")}</div>
     ${bl.length?`<div class="sec"><h5>Faturas</h5>${bl.map(b=>`<div class="bill-row"><span>💳 ${esc(b.card)}${b.real?'<span class="tagreal">fechada</span>':'<span class="tagest">estimada</span>'}</span><b>${brl(b.amount)}</b></div>`).join("")}</div>`:""}
+    ${il.length?`<div class="sec"><h5>Entradas previstas</h5>${il.map(x=>`<div class="bill-row"><span>💰 ${esc(x.name)}</span><b style="color:var(--ok)">${brl(x.amount)}</b></div>`).join("")}</div>`:""}
     ${dl.length?`<div class="sec"><h5>Prazos de metas</h5>${dl.map(g=>`<div class="act"><span class="t" data-open="${g.id}" style="cursor:pointer">🚩 ${esc(g.title)}</span></div>`).join("")}</div>`:""}
     <div class="sec"><h5>Ações</h5><div class="today-list" style="max-height:none">${as.length?as.map(a=>actRow(a,false)).join(""):`<div style="color:var(--mut);font-size:13px">Nada agendado.</div>`}</div></div>
     <div class="actions"><button class="btn ghost" id="dpClose">Fechar</button><button class="btn" id="dpNew">+ Nova ação neste dia</button></div></div>`;
@@ -613,7 +619,11 @@ function insights(){
     const d = diffDays(t, due);
     if (d >= 0 && d <= 5 && (val === null || val > 0)) out.push({p:1, lv:"warn", ic:"💳", tx:`Fatura <b>${esc(a.institution)} ${esc(a.name)}</b> vence ${d===0?"hoje":`em ${d} dia${d>1?"s":""}`}${val!==null?`: <b>${brl(val)}</b>${nb.real?"":" (estimada)"}`:""}.`});
   }
-  if (allBills().length){ const c = committed(30), sb = emConta(); if (c > sb) out.push({p:1, lv:"bad", ic:"🧮", tx:`As faturas dos próximos 30 dias (<b>${brl(c)}</b>) passam do saldo em conta (<b>${brl(sb)}</b>). Faltam <b>${brl(c-sb)}</b>.`}); }
+  if (allBills().length){
+    if (incItems().some(i=>Number(i.amount)>0)){ const f = cashFlow(30);
+      if (f.min.bal < 0){ const ni = nextIncome(f.min.date); out.push({p:1, lv:"bad", ic:"🧮", tx:`Em <b>${fmtDate(f.min.date)}</b> (${esc(f.min.tx)}) o saldo projetado fica em <b>${brl(f.min.bal)}</b>${ni?`, antes de ${esc(ni.name)} (${fmtDate(ni.date)})`:""}.`, incomes:1}); } }
+    else { const c = committed(30), sb = emConta(); if (c > sb) out.push({p:1, lv:"bad", ic:"🧮", tx:`As faturas dos próximos 30 dias (<b>${brl(c)}</b>) passam do saldo em conta (<b>${brl(sb)}</b>). Cadastre o salário para ver o fluxo real.`, incomes:1}); }
+  }
   const b = holidayBlocks(t, 1)[0];
   if (b && !b.onWeekend){ const d = diffDays(t, b.start); if (d > 0 && d <= 30) out.push({p:5, lv:"ok", ic:"🏖️", tx:`${esc(b.names[0])} em ${d} dias: ${b.days} dias de folga${b.bridge?` (${b.bridge.total} com emenda)`:""}. Que tal reservar um bloco de foco?`, planDay:`${b.start}|${b.names[0]}`}); }
   return out.sort((a,b)=>a.p-b.p);
@@ -625,7 +635,8 @@ function renderInsights(el, max){
     x.check?`<button class="btn sm" data-check="${x.check}">✓ Feito</button>`:
     x.plan?`<button class="btn ghost sm" data-planfor="${x.plan}">Agendar</button>`:
     x.planDay?`<button class="btn ghost sm" data-plan="${esc(x.planDay)}">Planejar</button>`:
-    x.open?`<button class="btn ghost sm" data-open="${x.open}">Ver</button>`:""}</div>`).join("") +
+    x.open?`<button class="btn ghost sm" data-open="${x.open}">Ver</button>`:
+    x.incomes?`<button class="btn ghost sm" data-incomes="1">💰</button>`:""}</div>`).join("") +
     (L.length > max ? `<div style="font-size:12px;color:var(--mut);text-align:center">+ ${L.length-max} alerta${L.length-max>1?"s":""}</div>` : "");
 }
 
@@ -691,6 +702,7 @@ function openPlus(){
 }
 function openMenu(){
   $("modal").innerHTML = `<h2>Menu</h2><div class="sheet" style="margin-top:12px">
+    <button class="btn ghost" data-incomes="1">💰 Entradas previstas (salário)</button>
     <button class="btn ghost" id="mExp">⬇ Baixar backup</button>
     <label class="btn ghost" style="cursor:pointer">⬆ Importar backup<input type="file" accept=".json,application/json" hidden id="mImp"></label>
     ${fb.auth?`<button class="btn ghost" id="mOut">🚪 Sair da conta</button>`:""}
@@ -708,7 +720,7 @@ $("btnMenu").onclick = openMenu;
 /* ============ CACHE LOCAL (abre instantâneo) ============ */
 const CACHE_KEY = "pm-cache-v1";
 let userName = "";
-function saveCache(){ if (LOCAL) return; try { localStorage.setItem(CACHE_KEY, JSON.stringify({goals, actions, finance, userName, at: Date.now()})); } catch {} }
+function saveCache(){ if (LOCAL) return; try { localStorage.setItem(CACHE_KEY, JSON.stringify({goals, actions, finance, incomes, userName, at: Date.now()})); } catch {} }
 function loadCache(){ try { return JSON.parse(localStorage.getItem(CACHE_KEY)); } catch { return null; } }
 function clearCache(){ try { localStorage.removeItem(CACHE_KEY); } catch {} }
 
@@ -731,9 +743,69 @@ function allBills(){ return cards().flatMap(a => (a.forecast||[]).map(f => ({...
 function emConta(){ return finance && finance.accounts ? finance.accounts.filter(a=>a.type!=="CREDIT").reduce((s,a)=>s+Number(a.balance||0),0) : 0; }
 function committed(days){ const t = today(), end = addDays(t, days); return allBills().filter(b => b.due >= t && b.due <= end).reduce((s,b)=>s+Number(b.amount||0),0); }
 function nextBill(a){ const t = today(); return (a.forecast||[]).find(f => f.due >= t) || null; }
+/* ============ ENTRADAS PREVISTAS (salário) ============ */
+const INC_DEFAULT = [{id:"adiant", name:"Adiantamento", rule:"fixed", day:20, amount:0}, {id:"salario", name:"Salário", rule:"bizday", day:5, amount:0}];
+function incItems(){ return (incomes && incomes.items) || []; }
+function incDateIn(it, ym){
+  const [y,m] = ym.split("-").map(Number), last = new Date(y, m, 0).getDate(), pad = n => String(n).padStart(2,"0");
+  if (it.rule === "bizday"){ let n = 0; for (let d=1; d<=last; d++){ const ds = `${ym}-${pad(d)}`; if (!isOff(ds) && ++n === Number(it.day)) return ds; } return `${ym}-${pad(last)}`; }
+  let ds = `${ym}-${pad(Math.min(Number(it.day)||1, last))}`;
+  for (let i=0; i<7 && isOff(ds); i++) ds = addDays(ds,-1);   /* caiu em feriado/fim de semana: antecipa */
+  return ds;
+}
+function incomesBetween(from, to){
+  const out = []; let ym = from.slice(0,7);
+  while (ym <= to.slice(0,7)){
+    for (const it of incItems()) if (Number(it.amount) > 0){ const d = incDateIn(it, ym); if (d >= from && d <= to) out.push({date:d, name:it.name, amount:Number(it.amount)}); }
+    const [y,m] = ym.split("-").map(Number); ym = m===12 ? `${y+1}-01` : `${y}-${String(m+1).padStart(2,"0")}`;
+  }
+  return out.sort((a,b)=>a.date.localeCompare(b.date));
+}
+/* Fluxo projetado: saldo hoje + entradas - faturas, dia a dia. Entrada de hoje já conta no saldo. */
+function cashFlow(days){
+  const t = today(), end = addDays(t, days);
+  const ev = [...incomesBetween(addDays(t,1), end).map(x=>({date:x.date, v:x.amount, k:0, tx:"💰 "+x.name})),
+              ...allBills().filter(b=>b.due>=t && b.due<=end).map(b=>({date:b.due, v:-Number(b.amount||0), k:1, tx:"💳 "+b.inst}))]
+    .sort((a,b)=>a.date.localeCompare(b.date) || a.k-b.k);
+  let bal = emConta(), min = {bal, date:t, tx:"hoje"};
+  for (const e of ev){ bal += e.v; e.bal = bal; if (e.k===1 && bal < min.bal) min = {bal, date:e.date, tx:e.tx}; }
+  return {ev, end:bal, min, inc: ev.filter(e=>e.k===0).reduce((s,e)=>s+e.v,0), out: -ev.filter(e=>e.k===1).reduce((s,e)=>s+e.v,0)};
+}
+function nextIncome(after){ return incomesBetween(addDays(after,1), addDays(after,62))[0] || null; }
 function commitHtml(){
-  const c = committed(30), saldo = emConta(), sobra = saldo - c;
-  return `<div class="commit">Faturas a pagar nos próximos 30 dias: <b>${brl(c)}</b><br>Em conta hoje: <b>${brl(saldo)}</b> → ${sobra>=0?`sobra <b style="color:var(--ok)">${brl(sobra)}</b>`:`faltam <b style="color:var(--bad)">${brl(-sobra)}</b>`}</div>`;
+  const f = cashFlow(30), saldo = emConta(), has = incItems().some(i=>Number(i.amount)>0);
+  const cor = v => `<b style="color:var(${v>=0?"--ok":"--bad"})">${brl(v)}</b>`;
+  let h = `<div class="commit">Em conta hoje: <b>${brl(saldo)}</b><br>` +
+    (has ? `+ Entradas previstas (30 dias): <b style="color:var(--ok)">${brl(f.inc)}</b><br>` : "") +
+    `− Faturas (30 dias): <b>${brl(f.out)}</b><br>= ${f.end>=0?"Sobra":"Falta"} no fim do período: ${cor(f.end)}`;
+  if (has && f.min.bal < 0){ const ni = nextIncome(f.min.date);
+    h += `<div class="aperto">⚠️ Aperto em <b>${fmtDate(f.min.date)}</b> (${esc(f.min.tx)}): saldo projetado ${cor(f.min.bal)}${ni?` até ${esc(ni.name)} em ${fmtDate(ni.date)}`:""}.</div>`; }
+  else if (has && f.ev.length) h += `<div style="color:var(--mut);font-size:12px;margin-top:4px">Ponto mais baixo: ${brl(f.min.bal)} em ${fmtDate(f.min.date)}</div>`;
+  return h + `<div style="margin-top:6px"><button class="btn ghost sm" data-incomes="1">💰 ${has?"Editar entradas":"Cadastrar salário"}</button></div></div>`;
+}
+function openIncomes(){
+  let items = JSON.parse(JSON.stringify(incItems().length ? incItems() : INC_DEFAULT));
+  const draw = () => {
+    $("modal").innerHTML = `<h2>💰 Entradas previstas</h2><div class="sub">Usadas para projetar o saldo contra as faturas. Ficam só na sua conta do Firebase.</div>
+      <div id="incList">${items.map((it,i)=>`<div class="inc-row" data-i="${i}">
+        <input class="in-name" value="${esc(it.name)}" placeholder="Nome">
+        <select class="in-rule"><option value="fixed"${it.rule==="fixed"?" selected":""}>Dia fixo</option><option value="bizday"${it.rule==="bizday"?" selected":""}>Dia útil nº</option></select>
+        <input class="in-day" type="number" min="1" max="31" inputmode="numeric" value="${it.day}">
+        <input class="in-amt" type="number" step="0.01" min="0" inputmode="decimal" placeholder="R$ valor" value="${Number(it.amount)>0?it.amount:""}">
+        <button class="btn ghost sm in-del" title="Remover">✕</button>
+        <small class="in-next">${Number(it.day)>0?"próxima: "+fmtDate(nextOf(it)):""}</small></div>`).join("")}</div>
+      <button class="btn ghost sm" id="incAdd" style="margin-top:8px">+ Outra entrada</button>
+      <div style="font-size:12px;color:var(--mut);margin-top:10px;line-height:1.5">Dia fixo que cair em fim de semana ou feriado é antecipado para o dia útil anterior. "Dia útil nº 5" = 5º dia útil do mês, sem contar feriados.</div>
+      <div class="actions"><button class="btn ghost" id="incCancel">Cancelar</button><button class="btn" id="incSave">Salvar</button></div>`;
+    const read = () => { items = [...document.querySelectorAll(".inc-row")].map((r,i)=>({id: items[i].id, name: r.querySelector(".in-name").value.trim() || "Entrada", rule: r.querySelector(".in-rule").value, day: Math.max(1, Math.min(31, parseInt(r.querySelector(".in-day").value)||1)), amount: Math.max(0, parseFloat(r.querySelector(".in-amt").value)||0)})); };
+    document.querySelectorAll(".in-del").forEach((b,i)=>b.onclick = () => { read(); items.splice(i,1); draw(); });
+    document.querySelectorAll(".in-rule,.in-day").forEach(x=>x.onchange = () => { read(); draw(); });
+    $("incAdd").onclick = () => { read(); items.push({id:uid(), name:"", rule:"fixed", day:10, amount:0}); draw(); };
+    $("incCancel").onclick = closeModal;
+    $("incSave").onclick = async () => { read(); await store.save("finance", {id:"incomes", items, updatedAt: new Date().toISOString()}); closeModal(); toast("💰 Entradas salvas. C'est noté !"); };
+  };
+  const nextOf = it => { const t = today(); const d = incDateIn(it, t.slice(0,7)); if (d > t) return d; const [y,m] = t.slice(0,7).split("-").map(Number); return incDateIn(it, m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`); };
+  draw(); $("ov").classList.add("show");
 }
 function renderBills(){
   const card = $("billsCard"), cs = cards().filter(a => (a.forecast||[]).length);
@@ -775,11 +847,12 @@ function renderCal(){
   let h = ["seg","ter","qua","qui","sex","sáb","dom"].map(w=>`<div class="wd">${w}</div>`).join("");
   for (let i=0;i<42;i++){
     const d = addDays(startD,i); if (i>=35 && d.slice(0,7)!==calMonth) break;
-    const hs = holOn(d), as = actions.filter(a=>a.date===d), dl = goals.filter(g=>g.deadline===d), bl = allBills().filter(b=>b.due===d);
+    const hs = holOn(d), as = actions.filter(a=>a.date===d), dl = goals.filter(g=>g.deadline===d), bl = allBills().filter(b=>b.due===d), il = incomesBetween(d,d);
     const cls = ["cday", d.slice(0,7)!==calMonth?"out":"", d===today()?"tod":"", hs.some(x=>x.type==="feriado")?"hol":isWeekend(d)?"we":""].join(" ");
     h += `<div class="${cls}" data-calday="${d}"><div class="n">${parse(d).getDate()}</div>` +
       hs.map(x=>`<div class="ev" style="background:${x.type==="feriado"?"#a7780f":"#4b5568"}" title="${esc(x.name)}">${esc(x.name)}</div>`).join("") +
       dl.map(g=>`<div class="ev" style="background:var(--bad)" title="Prazo: ${esc(g.title)}">🚩 ${esc(g.title)}</div>`).join("") +
+      il.map(x=>`<div class="ev" style="background:#1f6b45" title="${esc(x.name)}: ${brl(x.amount)}">💰 ${esc(x.name)}</div>`).join("") +
       bl.map(b=>`<div class="ev" style="background:#7a2f4a" title="Fatura ${esc(b.card)}: ${brl(b.amount)}${b.real?"":" (estimada)"}">💳 ${esc(b.inst)} ${brl(b.amount)}</div>`).join("") +
       as.map(a=>`<div class="ev" style="background:${a.done?"#2b3550":"var(--acc)"}" title="${esc(a.title)}">${a.time?a.time+" ":""}${esc(a.title)}</div>`).join("") + `</div>`;
   }
@@ -892,11 +965,12 @@ function renderGrid(list){
 
 /* ============ EVENTOS GLOBAIS ============ */
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-check],[data-open],[data-fa],[data-fs],[data-calday],[data-actdone],[data-actedit],[data-newact],[data-plan],[data-planfor],[data-step],[data-qnum]");
+  const t = e.target.closest("[data-check],[data-open],[data-fa],[data-fs],[data-calday],[data-actdone],[data-actedit],[data-newact],[data-plan],[data-planfor],[data-step],[data-qnum],[data-incomes]");
   if (!t) return;
   if (t.dataset.planfor){ openActionForm({id:uid(), title:"", date:today(), time:"", goalId:t.dataset.planfor, notes:"", done:false}); return; }
   if (t.dataset.step){ const [gid, mid] = t.dataset.step.split("|"); const g = goals.find(x=>x.id===gid); const m = g && g.milestones.find(x=>x.id===mid); if (m){ m.done = true; m.doneAt = today(); save(g); toast("✓ Etapa concluída. Bravo !"); } return; }
   if (t.dataset.qnum){ const g = goals.find(x=>x.id===t.dataset.qnum), inp = $("qn-"+t.dataset.qnum); const v = inp && inp.value; if (!g || v===""||isNaN(v)) return toast("Digite o valor atual"); g.numeric.current = Number(v); g.log = [...(g.log||[]), {date:today(), value:Number(v), note:"Registro rápido"}]; save(g); toast("Valor registrado 📈"); return; }
+  if (t.dataset.incomes){ openIncomes(); return; }
   if (t.dataset.calday){ openDay(t.dataset.calday); return; }
   if (t.dataset.actdone){ const a = actions.find(x=>x.id===t.dataset.actdone); if (a){ a.done = !a.done; save(a,"actions"); if (a.done) toast("✓ Ação concluída. Très bien !"); } return; }
   if (t.dataset.actedit){ const a = actions.find(x=>x.id===t.dataset.actedit); if (a) openActionForm(a); return; }
@@ -1048,7 +1122,7 @@ function drawDetail(){
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(()=>{});
 switchTab(tab);
 (async () => {
-  if (!LOCAL){ const c = loadCache(); if (c){ goals = c.goals||[]; actions = c.actions||[]; finance = c.finance||null; userName = c.userName||""; render(); } }
+  if (!LOCAL){ const c = loadCache(); if (c){ goals = c.goals||[]; actions = c.actions||[]; finance = c.finance||null; incomes = c.incomes||null; userName = c.userName||""; render(); } }
   if (LOCAL){
     $("banner").innerHTML = `<div class="banner">⚠️ <b>Modo local</b>: o Firebase ainda não foi configurado, então os dados ficam só neste navegador.</div>`;
     store = localStore();
@@ -1058,7 +1132,7 @@ switchTab(tab);
   }
   store.subscribe("goals", list => { goals = list; render(); if (openId && $("ov").classList.contains("show") && !$("fTitle")) drawDetail(); });
   store.subscribe("actions", list => { actions = list; render(); if ($("ov").classList.contains("show") && $("dayPanel")) openDay($("dayPanel").dataset.day); });
-  store.subscribe("finance", list => { finance = list.find(x=>x.id==="balances") || null; render(); });
+  store.subscribe("finance", list => { finance = list.find(x=>x.id==="balances") || null; incomes = list.find(x=>x.id==="incomes") || null; render(); });
 })();
 </script>
 </body>
