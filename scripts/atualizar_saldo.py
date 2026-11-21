@@ -100,11 +100,20 @@ def listar_transacoes(acc_id, headers, desde):
         nxt = j.get("next")
         if not nxt:
             break
-        if str(nxt).startswith("http"):
+        nxt = str(nxt)
+        if nxt.startswith("http"):                 # URL completa
             url, params = nxt, None
-        else:
-            params = {"accountId": acc_id, "dateFrom": desde, "after": nxt}
-    return out
+        elif nxt.startswith("?") or "=" in nxt:      # query string pronta: GET /v2/transactions{next}
+            url, params = f"{API}/v2/transactions" + (nxt if nxt.startswith("?") else "?" + nxt), None
+        else:                                        # só o cursor
+            url, params = f"{API}/v2/transactions", {"accountId": acc_id, "dateFrom": desde, "after": nxt}
+    vistos, unicos = set(), []
+    for t in out:                                    # evita contar a mesma transação duas vezes
+        k = t.get("id") or (t.get("date"), t.get("amount"), t.get("description"))
+        if k not in vistos:
+            vistos.add(k)
+            unicos.append(t)
+    return unicos
 
 
 def listar_transacoes_v1(acc_id, headers, desde):
