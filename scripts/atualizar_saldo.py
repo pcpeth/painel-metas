@@ -326,7 +326,7 @@ def main():
     headers = {"X-API-KEY": r.json()["apiKey"]}
 
     # 2) Lê as contas de cada conexão (item)
-    accounts, falhas, movs = [], 0, []
+    accounts, falhas, movs, itens_info = [], 0, [], []
     hoje = date.today()
     for item_id in [i.strip() for i in env("PLUGGY_ITEM_IDS").split(",") if i.strip()]:
         try:
@@ -334,6 +334,8 @@ def main():
             item.raise_for_status()
             item = item.json()
             connector = (item.get("connector") or {}).get("name", "")
+            itens_info.append({"status": item.get("status") or "", "executionStatus": item.get("executionStatus") or "",
+                               "lastUpdatedAt": (item.get("lastUpdatedAt") or item.get("updatedAt") or "")[:19]})
             res = requests.get(f"{API}/accounts", params={"itemId": item_id}, headers=headers, timeout=30)
             res.raise_for_status()
             contas = res.json().get("results", [])
@@ -409,7 +411,13 @@ def main():
         enviado = f"falhou ({type(e).__name__})"
 
     nf = sum(len(a["forecast"]) for a in accounts)
-    col.document("robotStatus").set({"ok": True, "at": now.isoformat(), "contas": len(accounts), "falhas": falhas,
+    ult = {}
+    for dia, _v, _c, _d, _o, _p, _id, tipo in movs:
+        ult[tipo] = max(ult.get(tipo, dia), dia)
+    print("Conexões: " + "; ".join(f"{i['status']}/{i['executionStatus']} atualizada em {i['lastUpdatedAt']}" for i in itens_info))
+    print("Último gasto lido: " + ", ".join(f"{t} {d.strftime('%d/%m')}" for t, d in sorted(ult.items())))
+    col.document("robotStatus").set({"ok": True, "at": now.isoformat(), "contas": len(accounts), "falhas": falhas, "itens": itens_info,
+                                     "ultimoGasto": {t: d.isoformat() for t, d in ult.items()},
                                      "msg": f"{falhas} conexão(ões) com falha" if falhas else ""})
     print(f"OK: {len(accounts)} contas atualizadas, {nf} faturas previstas, {len(movs)} gastos lidos, "
           f"{len(gastos['recurring'])} recorrentes, {falhas} conexões com falha; e-mail: {enviado}")
