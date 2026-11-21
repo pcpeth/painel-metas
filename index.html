@@ -486,7 +486,7 @@ function renderBalance(){
   const upd = finance.updatedAt ? new Date(finance.updatedAt).toLocaleString("pt-BR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
   B.innerHTML = `<div class="bal-total">${brl(total)}</div><div style="font-size:11px;color:var(--mut);margin-bottom:8px">em conta · atualizado ${upd}</div>` +
     bank.map(a=>`<div class="bal-row"><span>${esc(a.institution||"")} · ${esc(a.name||"")}</span><b>${brl(a.balance)}</b></div>`).join("") +
-    cards.map(a=>`<div class="bal-row"><span>💳 ${esc(a.institution||"")} · ${esc(a.name||"")}</span><b style="color:var(--bad)">${brl(a.balance)}</b></div>`).join("");
+    cards.map(a=>`<div class="bal-row"><span>💳 ${esc(a.institution||"")} · ${esc(a.name||"")}${a.dueDate?`<br><small style="color:var(--mut)">vence ${fmtDate(a.dueDate)}${a.creditLimit?` · limite ${brl(a.creditLimit)}`:""}</small>`:""}</span><b style="color:var(--bad)">${brl(a.balance)}</b></div>`).join("");
 }
 
 function renderCal(){
