@@ -315,6 +315,9 @@ td.r{text-align:right}
       <div class="chartbox" style="height:260px"><canvas id="chFlow"></canvas></div>
       <div style="font-size:11px;color:var(--mut);margin-top:6px">Linha cheia = como está hoje (salário + faturas + contas fixas). Tracejada = com o aumento (simulação). Área cinza = compras de costume no cartão ainda não feitas.</div>
     </section>
+    <section class="card" style="margin-bottom:16px"><h3>🧪 Simulador: e se…?</h3>
+      <div style="font-size:12.5px;color:var(--mut);margin:-4px 0 10px">Mude o saldo de hoje e/ou teste uma compra: o painel mostra quanto você poderia gastar por dia e <b>a partir de quando a compra cabe</b> sem o saldo projetado ficar negativo. Nada é salvo.</div>
+      <div id="simBox"></div></section>
     <section class="row2">
       <div class="card"><h3>🏦 Contas e cartões</h3><div id="balance"></div></div>
       <div class="card"><h3>🚀 Plano do aumento</h3><div id="raiseBox"></div></div>
@@ -926,10 +929,10 @@ function renderFin(){
     ["Contas fixas 30 dias", brl(f.fix), fixItems().length ? `${fixItems().length} cadastradas + recorrentes` : "cadastre as fixas", "var(--warn)"],
     ["Gasto no mês", S ? brl(S.cur.total) : "—", S && S.avg ? `média ${brl(S.avg)}` : "", "var(--txt)"]
   ].map(([l,v,s,c]) => `<div class="kpi"><div class="l">${l}</div><div class="v" style="color:${c};font-size:22px">${v}</div><div class="s">${s}</div></div>`).join("");
-  renderFlowChart(); renderRaise(); renderFlowLists(); renderLastBuys();
+  renderFlowChart(); renderRaise(); renderFlowLists(); renderLastBuys(); if (!$("smGo")) renderSim();
 }
 function flowSeries(days, sim, novos){
-  const t = today(), f = cashFlow(days, false, sim); let bal = emConta(), i = 0; const pts = [];
+  const t = today(), f = cashFlow(days, false, sim); let bal = startBal(), i = 0; const pts = [];
   const nvMonthly = novos ? avgNovosMes() : 0;
   for (let k = 0; k <= days; k++){ const d = addDays(t, k);
     while (i < f.ev.length && f.ev[i].date <= d){ bal += f.ev[i].v; i++; }
@@ -938,7 +941,8 @@ function flowSeries(days, sim, novos){
 }
 function renderFlowChart(){
   const has = incItems().some(i=>Number(i.amount)>0);
-  const base = flowSeries(60, false), R = raiseCfg(), simOn = R && Number(R.net) > 0 && !R.from && incMonthly() > 0;
+  const base = withSim(null, () => flowSeries(60, false)), R = raiseCfg(), simOn = R && Number(R.net) > 0 && !R.from && incMonthly() > 0;
+  const cen = SIM_SHOWN ? withSim(SIM_SHOWN, () => flowSeries(60, false)) : null;
   const sim = simOn ? flowSeries(60, true) : null;
   const min = base.reduce((m,p)=>p.v<m.v?p:m, base[0]), end = base[base.length-1];
   const neg = base.filter(p=>p.v<0).length;
@@ -951,7 +955,8 @@ function renderFlowChart(){
   charts.flow = new Chart($("chFlow"), {type:"line", data:{labels:lbl, datasets:[
       {label:"Saldo projetado", data:base.map(p=>p.v), borderColor:"#6d8bff", backgroundColor:"#6d8bff22", fill:{target:{value:0}, above:"#6d8bff14", below:"#ef5b5b33"}, stepped:true, pointRadius:0, borderWidth:2},
       ...(nvDay>0 ? [{label:"Com compras de costume", data:pat, borderColor:"#8b97b0", borderDash:[2,3], pointRadius:0, borderWidth:1, stepped:true, fill:false}] : []),
-      ...(sim ? [{label:"Com aumento (simulação)", data:sim.map(p=>p.v), borderColor:"#2fbf71", borderDash:[6,4], pointRadius:0, borderWidth:2, stepped:true, fill:false}] : [])]},
+      ...(sim ? [{label:"Com aumento (simulação)", data:sim.map(p=>p.v), borderColor:"#2fbf71", borderDash:[6,4], pointRadius:0, borderWidth:2, stepped:true, fill:false}] : []),
+      ...(cen ? [{label:"🧪 Cenário", data:cen.map(p=>p.v), borderColor:"#b07cff", borderWidth:2.5, pointRadius:0, stepped:true, fill:false}] : [])]},
     options:{maintainAspectRatio:false, interaction:{mode:"index", intersect:false},
       scales:{y:{grid:{color:c=>c.tick.value===0?"#ef5b5b88":"#ffffff10"}, ticks:{callback:v=>brl(v).replace(",00","")}}, x:{grid:{display:false}, ticks:{maxTicksLimit:10}}},
       plugins:{legend:{labels:{boxWidth:10,usePointStyle:true}}, tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${brl(c.raw)}`,
@@ -1179,12 +1184,88 @@ function cashFlow(days, novos=false, sim=false){
   const t = today(), end = addDays(t, days);
   const ev = [...incomesBetween(addDays(t,1), end, sim).map(x=>({date:x.date, v:x.amount, k:0, tx:"💰 "+x.name})),
               ...allBills().filter(b=>b.due>=t && b.due<=end).map(b=>({date:b.due, v:-(Number(b.amount||0) + (novos ? Number(b.novos||0) : 0)), k:1, tx:"💳 "+b.inst})),
-              ...fixedBetween(t, end).map(x=>({date:x.date, v:-x.amount, k:1, fx:1, tx:"📌 "+x.name}))]
+              ...fixedBetween(t, end).map(x=>({date:x.date, v:-x.amount, k:1, fx:1, tx:"📌 "+x.name})),
+              ...simEvents(t, end)]
     .sort((a,b)=>a.date.localeCompare(b.date) || a.k-b.k);
-  let bal = emConta(), min = {bal, date:t, tx:"hoje"};
+  let bal = startBal(), min = {bal, date:t, tx:"hoje"};
   for (const e of ev){ bal += e.v; e.bal = bal; if (e.k===1 && bal < min.bal) min = {bal, date:e.date, tx:e.tx}; }
   return {ev, end:bal, min, inc: ev.filter(e=>e.k===0).reduce((s,e)=>s+e.v,0), out: -ev.filter(e=>e.k===1 && !e.fx).reduce((s,e)=>s+e.v,0), fix: -ev.filter(e=>e.fx).reduce((s,e)=>s+e.v,0)};
 }
+/* ============ SIMULADOR: "e se eu tivesse X na conta / fizesse esta compra?" ============ */
+let SIM = null;               /* {saldo, compra:{v, n, modo:"conta"|cartão-id, date}, extra:{v, date}} — só na memória */
+let simForm = null;           /* últimos valores do formulário */
+function startBal(){ return SIM && SIM.saldo !== null && SIM.saldo !== undefined && SIM.saldo !== "" ? Number(SIM.saldo) : emConta(); }
+function withSim(sim, fn){ const o = SIM; SIM = sim; try { return fn(); } finally { SIM = o; } }
+/* parcelas no cartão: compra até ~8 dias antes do vencimento cai na fatura seguinte */
+function cardDueDates(cardKey, buyDate, n){
+  const a = cards().find(c => accKey(c) === cardKey) || cards()[0]; if (!a) return [];
+  let due = ((a.forecast||[]).map(f=>f.due).find(d => d >= addDays(buyDate, 8))) || nextMonthSameDay(addDays(buyDate, 30));
+  const out = []; for (let i = 0; i < n; i++){ out.push(due); due = nextMonthSameDay(due); } return out;
+}
+function simEvents(from, to){
+  if (!SIM) return []; const ev = [];
+  const c = SIM.compra;
+  if (c && Number(c.v) > 0){ const d = c.date || today();
+    if (c.modo === "conta"){ if (d >= from && d <= to) ev.push({date:d, v:-Number(c.v), k:1, tx:"🧪 Compra simulada"}); }
+    else { const n = Math.max(1, Number(c.n)||1); for (const due of cardDueDates(c.modo, d, n)) if (due >= from && due <= to) ev.push({date:due, v:-Number(c.v)/n, k:1, tx:`🧪 Parcela simulada (${n}x)`}); } }
+  const x = SIM.extra;
+  if (x && Number(x.v) > 0 && x.date && x.date >= from && x.date <= to) ev.push({date:x.date, v:Number(x.v), k:0, tx:"🧪 Entrada simulada"});
+  return ev;
+}
+/* primeiro dia em que a compra cabe sem o saldo projetado ficar abaixo da folga mínima nos 120 dias seguintes */
+function quandoCabe(base, folga){
+  const t = today();
+  for (let k = 0; k <= 120; k++){ const d = addDays(t, k);
+    const min = withSim({...base, compra:{...base.compra, date:d}}, () => cashFlow(150).min.bal);
+    if (min >= folga) return {date:d, k, min}; }
+  return null;
+}
+function renderSim(){
+  const B = $("simBox"); if (!B) return;
+  const F = simForm || {saldo: Math.round(emConta()*100)/100, v:"", modo: cards()[0] ? accKey(cards()[0]) : "conta", n:1, folga:0, extraV:"", extraD:""};
+  const real = livreCalc(), realMin = cashFlow(60).min;
+  B.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
+      <div class="f" style="margin:0"><label>Se eu tivesse na conta hoje (R$)</label><input id="smSaldo" type="number" inputmode="decimal" step="10" value="${F.saldo}"></div>
+      <div class="f" style="margin:0"><label>Quero gastar (R$)</label><input id="smV" type="number" inputmode="decimal" step="10" placeholder="ex.: 600" value="${F.v}"></div>
+      <div class="f" style="margin:0"><label>Pagando com</label><select id="smModo"><option value="conta" ${F.modo==="conta"?"selected":""}>Pix / débito (sai da conta)</option>${cards().map(c=>`<option value="${esc(accKey(c))}" ${F.modo===accKey(c)?"selected":""}>💳 ${esc(c.institution)} ${esc(c.name)}</option>`).join("")}</select></div>
+      <div class="f" style="margin:0"><label>Parcelas</label><input id="smN" type="number" min="1" max="24" value="${F.n}" ${F.modo==="conta"?"disabled":""}></div>
+      <div class="f" style="margin:0"><label>Folga mínima que quero manter (R$)</label><input id="smFolga" type="number" inputmode="decimal" step="50" value="${F.folga}"></div>
+      <div class="f" style="margin:0"><label>Entrada extra? (R$ e data)</label><div style="display:flex;gap:4px"><input id="smXV" type="number" inputmode="decimal" placeholder="R$" value="${F.extraV}" style="min-width:0"><input id="smXD" type="date" value="${F.extraD}" style="min-width:0"></div></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:10px"><button class="btn" id="smGo">🧪 Simular</button><button class="btn ghost" id="smReset">Limpar</button></div>
+    <div id="smOut" style="margin-top:10px"></div>`;
+  $("smModo").onchange = () => { $("smN").disabled = $("smModo").value === "conta"; };
+  $("smReset").onclick = () => { simForm = null; SIM = null; renderSim(); renderFlowChart(); };
+  $("smGo").onclick = () => {
+    simForm = {saldo: $("smSaldo").value, v: $("smV").value, modo: $("smModo").value, n: parseInt($("smN").value)||1, folga: parseFloat($("smFolga").value)||0, extraV: $("smXV").value, extraD: $("smXD").value};
+    const base = {saldo: simForm.saldo === "" ? null : parseFloat(simForm.saldo), compra: {v: parseFloat(simForm.v)||0, n: simForm.n, modo: simForm.modo, date: today()}, extra: {v: parseFloat(simForm.extraV)||0, date: simForm.extraD}};
+    const semCompra = {...base, compra:null};
+    const L0 = withSim(semCompra, () => livreCalc()), L1 = withSim(base, () => livreCalc());
+    const m0 = withSim(semCompra, () => cashFlow(60).min), m1 = withSim(base, () => cashFlow(60).min);
+    const col = v => `color:var(${v>=0?"--ok":"--bad"})`;
+    let h = `<table style="width:100%;font-size:13px;border-collapse:collapse"><tr style="color:var(--mut)"><td></td><td><b>Real hoje</b></td><td><b>Cenário</b></td>${base.compra.v?`<td><b>Cenário + compra</b></td>`:""}</tr>
+      <tr><td>Saldo na conta</td><td>${brl(emConta())}</td><td>${brl(semCompra.saldo ?? emConta())}</td>${base.compra.v?`<td>${brl(base.saldo ?? emConta())}</td>`:""}</tr>
+      <tr><td>Pode gastar por dia</td><td style="${col(real.liv)}">${brl(real.perDay)}</td><td style="${col(L0.liv)}"><b>${brl(L0.perDay)}</b></td>${base.compra.v?`<td style="${col(L1.liv)}"><b>${brl(L1.perDay)}</b></td>`:""}</tr>
+      <tr><td>Ponto mais baixo (60 dias)</td><td style="${col(realMin.bal)}">${brl(realMin.bal)}<br><small>${fmtDate(realMin.date)}</small></td><td style="${col(m0.bal)}">${brl(m0.bal)}<br><small>${fmtDate(m0.date)}</small></td>${base.compra.v?`<td style="${col(m1.bal)}">${brl(m1.bal)}<br><small>${fmtDate(m1.date)}</small></td>`:""}</tr></table>`;
+    SIM = null;
+    if (base.compra.v){
+      const q = quandoCabe(base, simForm.folga);
+      h += `<div class="commit" style="margin-top:8px">${q ? (q.k === 0 ? `✅ <b>Dá para fazer hoje.</b> O saldo projetado não passa de ${brl(simForm.folga)} para baixo (mínimo ${brl(q.min)}).`
+          : `⏳ <b>Dá a partir de ${fmtDate(q.date)}</b> (em ${q.k} dia${q.k>1?"s":""}). Antes disso o saldo ficaria abaixo de ${brl(simForm.folga)}.`)
+        : `❌ <b>Não cabe nos próximos 4 meses</b> com esse saldo e essa forma de pagamento.`}`;
+      if (simForm.modo !== "conta" && (!q || q.k > 0)){ for (const n of [2,3,6,10,12]) if (n > simForm.n){ const q2 = quandoCabe({...base, compra:{...base.compra, n}}, simForm.folga);
+          if (q2 && (!q || q2.k < q.k)){ h += `<br>💡 Em <b>${n}x</b> ${q2.k===0?"já cabe hoje":`cabe a partir de ${fmtDate(q2.date)}`} (${brl(base.compra.v/n)}/mês).`; break; } } }
+      if (simForm.modo === "conta" && (!q || q.k > 0) && cards().length){ const q3 = quandoCabe({...base, compra:{...base.compra, modo:accKey(cards()[0]), n:1}}, simForm.folga);
+        if (q3 && (!q || q3.k < q.k)) h += `<br>💡 No cartão ${esc(cards()[0].institution)}, à vista, ${q3.k===0?"já cabe hoje":`cabe a partir de ${fmtDate(q3.date)}`} — porque só sai na fatura.`; }
+      if (q && q.k === 0 && L1.liv < 0 && L1.res > 0) h += `<br>⚠️ Mas ela usa a parte que iria para a reserva (${brl(L1.res)} até o próximo salário).`;
+      h += `</div>`;
+      SIM = {...base, compra:{...base.compra, date: q ? q.date : today()}};
+    } else SIM = semCompra;
+    $("smOut").innerHTML = h; renderFlowChart(); SIM_SHOWN = SIM; SIM = null;
+  };
+}
+let SIM_SHOWN = null;
+
 /* ============ CONTAS FIXAS (saídas que não passam pelo cartão) ============ */
 function fixItems(){ return (fixed && fixed.items) || []; }
 function bankRecurring(){ const ign = new Set((fixed && fixed.ignoreRec) || []); return ((spending && spending.recurring) || []).filter(r => r.tipo === "conta" && !ign.has(r.k)); }
